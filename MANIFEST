@@ -6,10 +6,12 @@ Makefile.PL
 OpenCL.pm
 OpenCL.xs
 constiv.h
-invalid.h
+errstr.h
+enumstr.h
+typemap
 t/00_load.t
 
 genconstiv
-geninvalid
+genenumstr
 META.yml                                 Module YAML meta-data (added by MakeMaker)
 META.json                                Module JSON meta-data (added by MakeMaker)

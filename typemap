@@ -1,0 +1,57 @@
+cl_bool			T_BOOL
+cl_char			T_IV
+cl_uchar		T_UV
+cl_short		T_IV
+cl_ushort		T_UV
+cl_int			T_IV
+cl_uint			T_UV
+cl_long			T_IV
+cl_ulong		T_UV
+cl_float		T_NV
+cl_half			T_UV
+
+cl_platform_info	T_IV
+cl_device_type		T_IV
+cl_device_info		T_IV
+cl_context_info		T_IV
+cl_command_queue_info	T_IV
+cl_mem_flags		T_IV
+cl_mem_info		T_IV
+cl_mem_object_type	T_IV
+cl_channel_order	T_UV
+cl_channel_type		T_UV
+cl_event_info		T_IV
+cl_addressing_mode	T_IV
+cl_filter_mode		T_IV
+cl_sampler_info		T_IV
+cl_program_info		T_IV
+cl_program_build_info	T_IV
+cl_kernel_info		T_IV
+
+OpenCL::Platform	ptrobj
+OpenCL::Device		ptrobj
+OpenCL::Context		ptrobj
+OpenCL::Queue		ptrobj
+OpenCL::Memory		ptrobj
+OpenCL::Buffer		ptrobj
+OpenCL::Image		ptrobj
+OpenCL::Image2D		ptrobj
+OpenCL::Image3D		ptrobj
+OpenCL::Memory_ornull	ptrobj_ornull
+OpenCL::Buffer_ornull	ptrobj_ornull
+OpenCL::Image_ornull	ptrobj_ornull
+OpenCL::Image2D_ornull	ptrobj_ornull
+OpenCL::Image3D_ornull	ptrobj_ornull
+OpenCL::Sampler		ptrobj
+OpenCL::Program		ptrobj
+OpenCL::Kernel		ptrobj
+OpenCL::Event		ptrobj
+
+INPUT
+
+ptrobj
+	$var = ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")
+
+ptrobj_ornull
+	$var = SvOK ($arg) ? ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${\substr $ntype, 0, -7}\") : 0
+

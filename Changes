@@ -1,5 +1,8 @@
 Revision history for Perl extension OpenCL.
 
+0.02  Tue Nov 15 22:15:47 CET 2011
+	- first opencl kernel executed, some example code.
+
 0.01  Tue Nov 15 05:59:00 CET 2011
 	- cloned from Convert::Scalar.
 
