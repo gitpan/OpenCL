@@ -1,0 +1,2 @@
+</usr/include/CL/cl.h perl -ne 'print "const_iv($1)\n" if /^#define CL_(\S+)/' >constiv.h
+
