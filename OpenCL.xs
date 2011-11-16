@@ -22,6 +22,31 @@ typedef cl_sampler           OpenCL__Sampler;
 typedef cl_program           OpenCL__Program;
 typedef cl_kernel            OpenCL__Kernel;
 typedef cl_event             OpenCL__Event;
+typedef cl_event             OpenCL__UserEvent;
+
+/*****************************************************************************/
+
+/* up to two temporary buffers */
+static void *
+tmpbuf (size_t size)
+{
+  static int idx;
+  static void *buf [2];
+  static size_t len [2];
+
+  idx ^= 1;
+
+  if (len [idx] < size)
+    {
+      free (buf [idx]);
+      len [idx] = ((size + 31) & ~4095) + 4096 - 32;
+      buf [idx] = malloc (len [idx]);
+    }
+
+  return buf [idx];
+}
+
+/*****************************************************************************/
 
 typedef struct
 {
@@ -65,8 +90,12 @@ err2str (cl_int err)
   return iv2str (err, errstr, sizeof (errstr) / sizeof (errstr [0]), "ERROR(%d)");
 }
 
-#define FAIL(name,res) \
-  croak ("cl" # name ": %s", err2str (res));
+/*****************************************************************************/
+
+static cl_int last_error;
+
+#define FAIL(name,err) \
+  croak ("cl" # name ": %s", err2str (last_error = err));
 
 #define NEED_SUCCESS(name,args) \
   do { \
@@ -76,11 +105,36 @@ err2str (cl_int err)
       FAIL (name, res); \
   } while (0)
 
+/*****************************************************************************/
+
 #define NEW_MORTAL_OBJ(class,ptr) sv_setref_pv (sv_newmortal (), class, ptr)
 #define XPUSH_NEW_OBJ(class,ptr) XPUSHs (NEW_MORTAL_OBJ (class, ptr))
 
-/*TODO*/
-#define EVENT_LIST(items,count) cl_uint event_list_count = 0; cl_event *event_list_ptr = 0
+static void *
+SvPTROBJ (const char *func, const char *svname, SV *sv, const char *pkg)
+{
+  if (SvROK (sv) && sv_derived_from (sv, pkg))
+    return (void *)SvIV (SvRV (sv));
+
+   croak ("%s: %s is not of type %s", func, svname, pkg);
+}
+
+/*****************************************************************************/
+
+static cl_event *
+event_list (SV **items, int count)
+{
+  cl_event *list = tmpbuf (sizeof (cl_event) * count);
+
+  while (count--)
+    list [count] = SvPTROBJ ("clEnqueue", "wait_events", items [count], "OpenCL::Event");
+
+  return list;
+}
+
+#define EVENT_LIST(items,count) \
+  cl_uint event_list_count = (count); \
+  cl_event *event_list_ptr = event_list (&ST (items), event_list_count)
 
 #define INFO(class) \
 { \
@@ -96,31 +150,6 @@ err2str (cl_int err)
         XPUSHs (sv); \
 }
 
-static void *
-SvPTROBJ (const char *func, const char *svname, SV *sv, const char *pkg)
-{
-  if (SvROK (sv) && sv_derived_from (sv, pkg))
-    return (void *)SvIV (SvRV (sv));
-
-   croak ("%s: %s is not of type %s", func, svname, pkg);
-}
-
-static void *
-tmpbuf (size_t size)
-{
-  static void *buf;
-  static size_t len;
-
-  if (len < size)
-    {
-      free (buf);
-      len = ((size + 31) & ~4095) + 4096 - 32;
-      buf = malloc (len);
-    }
-
-  return buf;
-}
-
 MODULE = OpenCL		PACKAGE = OpenCL
 
 PROTOTYPES: ENABLE
@@ -129,21 +158,27 @@ BOOT:
 {
         HV *stash = gv_stashpv ("OpenCL", 1);
         static const ivstr *civ, const_iv[] = {
-          { sizeof (cl_char  ), "SIZEOF_CHAR"  },
-          { sizeof (cl_uchar ), "SIZEOF_UCHAR" },
-          { sizeof (cl_short ), "SIZEOF_SHORT" },
-          { sizeof (cl_ushort), "SIZEOF_USHORT"},
-          { sizeof (cl_int   ), "SIZEOF_INT"   },
-          { sizeof (cl_uint  ), "SIZEOF_UINT"  },
-          { sizeof (cl_long  ), "SIZEOF_LONG"  },
-          { sizeof (cl_ulong ), "SIZEOF_ULONG" },
-          { sizeof (cl_half  ), "SIZEOF_HALF"  },
-          { sizeof (cl_float ), "SIZEOF_FLOAT" },
+          { sizeof (cl_char  ), "SIZEOF_CHAR"   },
+          { sizeof (cl_uchar ), "SIZEOF_UCHAR"  },
+          { sizeof (cl_short ), "SIZEOF_SHORT"  },
+          { sizeof (cl_ushort), "SIZEOF_USHORT" },
+          { sizeof (cl_int   ), "SIZEOF_INT"    },
+          { sizeof (cl_uint  ), "SIZEOF_UINT"   },
+          { sizeof (cl_long  ), "SIZEOF_LONG"   },
+          { sizeof (cl_ulong ), "SIZEOF_ULONG"  },
+          { sizeof (cl_half  ), "SIZEOF_HALF"   },
+          { sizeof (cl_float ), "SIZEOF_FLOAT"  },
+          { sizeof (cl_double), "SIZEOF_DOUBLE" },
 #include "constiv.h"
         };
         for (civ = const_iv + sizeof (const_iv) / sizeof (const_iv [0]); civ > const_iv; civ--)
           newCONSTSUB (stash, (char *)civ[-1].name, newSViv (civ[-1].iv));
 }
+
+cl_int
+errno ()
+	CODE:
+        errno = last_error;
 
 const char *
 err2str (cl_int err)
@@ -272,6 +307,19 @@ command_queue_simple (OpenCL::Context this, OpenCL::Device device)
           FAIL (CreateCommandQueue, res);
 
         XPUSH_NEW_OBJ ("OpenCL::Queue", queue);
+}
+
+void
+user_event (OpenCL::Context this)
+	PPCODE:
+{
+	cl_int res;
+  	cl_event ev = clCreateUserEvent (this, &res);
+
+        if (res)
+          FAIL (CreateUserevent, res);
+
+        XPUSH_NEW_OBJ ("OpenCL::UserEvent", ev);
 }
 
 void
@@ -581,7 +629,7 @@ enqueue_nd_range_kernel (OpenCL::Queue this, OpenCL::Kernel kernel, SV *global_w
         int gws_len;
         size_t *lists;
         int i;
-        EVENT_LIST (2, items - 2);
+        EVENT_LIST (5, items - 5);
 
         if (!SvROK (global_work_size) || SvTYPE (SvRV (global_work_size)) != SVt_PVAV)
           croak ("clEnqueueNDRangeKernel: global_work_size must be an array reference");
@@ -791,6 +839,11 @@ set_float (OpenCL::Kernel this, cl_uint idx, cl_float value)
         clSetKernelArg (this, idx, sizeof (value), &value);
 
 void
+set_double (OpenCL::Kernel this, cl_uint idx, cl_double value)
+	CODE:
+        clSetKernelArg (this, idx, sizeof (value), &value);
+
+void
 set_memory (OpenCL::Kernel this, cl_uint idx, OpenCL::Memory_ornull value)
 	CODE:
         clSetKernelArg (this, idx, sizeof (value), &value);
@@ -836,4 +889,11 @@ void
 wait (OpenCL::Event this)
 	CODE:
 	clWaitForEvents (1, &this);
+
+MODULE = OpenCL		PACKAGE = OpenCL::UserEvent
+
+void
+set_status (OpenCL::UserEvent this, cl_int execution_status)
+	CODE:
+	clSetUserEventStatus (this, execution_status);
 

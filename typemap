@@ -7,6 +7,7 @@ cl_int			T_IV
 cl_uint			T_UV
 cl_long			T_IV
 cl_ulong		T_UV
+cl_double		T_NV
 cl_float		T_NV
 cl_half			T_UV
 
@@ -46,6 +47,7 @@ OpenCL::Sampler		ptrobj
 OpenCL::Program		ptrobj
 OpenCL::Kernel		ptrobj
 OpenCL::Event		ptrobj
+OpenCL::UserEvent	ptrobj
 
 INPUT
 

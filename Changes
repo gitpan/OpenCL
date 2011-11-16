@@ -1,5 +1,10 @@
 Revision history for Perl extension OpenCL.
 
+0.03  Wed Nov 16 01:44:26 CET 2011
+	- add some reference documentation for all functions.
+        - add user event support.
+        - implement event wait lists.
+
 0.02  Tue Nov 15 22:15:47 CET 2011
 	- first opencl kernel executed, some example code.
 
