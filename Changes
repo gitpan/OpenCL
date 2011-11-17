@@ -1,6 +1,20 @@
 Revision history for Perl extension OpenCL.
 
-0.14
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadBufferRect.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRect.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetImageInfo.html
+
+0.15 Thu Nov 17 07:22:11 CET 2011
+	- include slice_pitch in enqueue_write_image (can be 0).
+        - check length in enqueue_write_image.
+        - properly calculate size in enqueue_read_image.
+        - likewise, include row_pitch and slice_pitch in image2d and image3d,
+          which must be nonzero right now, too, sorry.
+        - allow undef or missing data scalar for image2d and image3d.
+	- fix enqueue_copy_image prototype.
+        - fix formatting.
+
+0.14 Thu Nov 17 04:04:23 CET 2011
 	- major incompatibilities due to API cleanup, the AI should now be
           mostly stable, if incomplete.
 	- fix prerequisites.

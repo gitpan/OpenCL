@@ -128,6 +128,14 @@ SvPTROBJ (const char *func, const char *svname, SV *sv, const char *pkg)
 
 /*****************************************************************************/
 
+static size_t
+img_row_pitch (cl_mem img)
+{
+  size_t res;
+  clGetImageInfo (img, CL_IMAGE_ROW_PITCH, sizeof (res), &res, 0);
+  return res;
+}
+
 static cl_event *
 event_list (SV **items, int count)
 {
@@ -146,10 +154,8 @@ event_list (SV **items, int count)
 #define INFO(class) \
 { \
   	size_t size; \
-        SV *sv; \
-	\
   	NEED_SUCCESS (Get ## class ## Info, (this, name, 0, 0, &size)); \
-        sv = sv_2mortal (newSV (size)); \
+        SV *sv = sv_2mortal (newSV (size)); \
         SvUPGRADE (sv, SVt_PV); \
         SvPOK_only (sv); \
         SvCUR_set (sv, size); \
@@ -196,7 +202,6 @@ enum2str (cl_uint value)
 void
 platforms ()
 	PPCODE:
-{
 	cl_platform_id *list;
         cl_uint count;
         int i;
@@ -208,7 +213,6 @@ platforms ()
         EXTEND (SP, count);
         for (i = 0; i < count; ++i)
           PUSHs (NEW_MORTAL_OBJ ("OpenCL::Platform", list [i]));
-}
 
 void
 context_from_type (FUTURE properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, FUTURE notify = 0)
@@ -224,10 +228,8 @@ context (FUTURE properties, FUTURE devices, FUTURE notify = 0)
 void
 wait_for_events (...)
 	CODE:
-{
         EVENT_LIST (0, items);
         NEED_SUCCESS (WaitForEvents, (event_list_count, event_list_ptr));
-}
 
 PROTOTYPES: DISABLE
 
@@ -241,7 +243,6 @@ info (OpenCL::Platform this, cl_platform_info name)
 void
 devices (OpenCL::Platform this, cl_device_type type = CL_DEVICE_TYPE_ALL)
 	PPCODE:
-{
 	cl_device_id *list;
         cl_uint count;
         int i;
@@ -253,7 +254,6 @@ devices (OpenCL::Platform this, cl_device_type type = CL_DEVICE_TYPE_ALL)
         EXTEND (SP, count);
         for (i = 0; i < count; ++i)
           PUSHs (sv_setref_pv (sv_newmortal (), "OpenCL::Device", list [i]));
-}
 
 void
 context (OpenCL::Platform this, FUTURE properties, SV *devices, FUTURE notify = 0)
@@ -261,7 +261,7 @@ context (OpenCL::Platform this, FUTURE properties, SV *devices, FUTURE notify = 
         if (!SvROK (devices) || SvTYPE (SvRV (devices)) != SVt_PVAV)
           croak ("OpenCL::Platform argument 'device' must be an arrayref with device objects, in call");
 
-        AV *av = (SV *)SvRV (devices);
+        AV *av = (AV *)SvRV (devices);
         cl_uint num_devices = av_len (av) + 1;
         cl_device_id *device_list = tmpbuf (sizeof (cl_device_id) * num_devices);
         int i;
@@ -332,22 +332,21 @@ buffer_sv (OpenCL::Context this, cl_mem_flags flags, SV *data)
         XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
 
 void
-image2d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, SV *data)
+image2d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t row_pitch = 0, SV *data = &PL_sv_undef)
 	PPCODE:
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
         const cl_image_format format = { channel_order, channel_type };
-  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage2D, (this, flags, &format, width, height, len / height, ptr, &res));
+  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage2D, (this, flags, &format, width, height, row_pitch, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
 
 void
-image3d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t depth, size_t slice_pitch, SV *data)
+image3d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t depth, size_t row_pitch = 0, size_t slice_pitch = 0, SV *data = &PL_sv_undef)
 	PPCODE:
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
         const cl_image_format format = { channel_order, channel_type };
-  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage3D, (this, flags, &format, width, height,
-                                                      depth, len / (height * slice_pitch), slice_pitch, ptr, &res));
+  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage3D, (this, flags, &format, width, height, depth, row_pitch, slice_pitch, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image3D", mem);
 
 void
@@ -404,7 +403,6 @@ info (OpenCL::Queue this, cl_command_queue_info name)
 void
 enqueue_read_buffer (OpenCL::Queue this, OpenCL::Buffer mem, cl_bool blocking, size_t offset, size_t len, SV *data, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         EVENT_LIST (6, items - 6);
 
@@ -416,12 +414,10 @@ enqueue_read_buffer (OpenCL::Queue this, OpenCL::Buffer mem, cl_bool blocking, s
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_write_buffer (OpenCL::Queue this, OpenCL::Buffer mem, cl_bool blocking, size_t offset, SV *data, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
@@ -431,12 +427,10 @@ enqueue_write_buffer (OpenCL::Queue this, OpenCL::Buffer mem, cl_bool blocking, 
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_copy_buffer (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_offset, size_t dst_offset, size_t len, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         EVENT_LIST (6, items - 6);
 
@@ -444,20 +438,22 @@ enqueue_copy_buffer (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer dst,
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
-
-  /*TODO http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadBufferRect.html */
-  /*TODO http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRect.html */
 
 void
 enqueue_read_image (OpenCL::Queue this, OpenCL::Image src, cl_bool blocking, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
         const size_t region[3] = { width, height, depth };
-        size_t len = row_pitch * slice_pitch * depth;
-        EVENT_LIST (11, items - 11);
+        EVENT_LIST (12, items - 12);
+
+	if (!row_pitch)
+	  row_pitch = img_row_pitch (src);
+
+        if (depth > 1 && !slice_pitch)
+          slice_pitch = row_pitch * height;
+
+        size_t len = slice_pitch ? slice_pitch * depth : row_pitch * height;
 
         SvUPGRADE (data, SVt_PV);
         SvGROW (data, len);
@@ -467,30 +463,36 @@ enqueue_read_image (OpenCL::Queue this, OpenCL::Image src, cl_bool blocking, siz
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
-enqueue_write_image (OpenCL::Queue this, OpenCL::Image dst, cl_bool blocking, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t row_pitch, SV *data, ...)
+enqueue_write_image (OpenCL::Queue this, OpenCL::Image dst, cl_bool blocking, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
         const size_t region[3] = { width, height, depth };
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
-        size_t slice_pitch = len / (row_pitch * height);
-        EVENT_LIST (11, items - 11);
+        EVENT_LIST (12, items - 12);
+
+	if (!row_pitch)
+	  row_pitch = img_row_pitch (dst);
+
+        if (depth > 1 && !slice_pitch)
+          slice_pitch = row_pitch * height;
+
+        size_t min_len = slice_pitch ? slice_pitch * depth : row_pitch * height;
+
+        if (len < min_len)
+          croak ("clEnqueueWriteImage: data string is shorter than what would be transferred");
 
         NEED_SUCCESS (EnqueueWriteImage, (this, dst, blocking, dst_origin, region, row_pitch, slice_pitch, SvPVX (data), event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_copy_buffer_rect (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t src_row_pitch, size_t src_slice_pitch, size_t dst_row_pitch, size_t dst_slice_pitch, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
@@ -501,12 +503,10 @@ enqueue_copy_buffer_rect (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_copy_buffer_to_image (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
         const size_t region[3] = { width, height, depth };
@@ -516,12 +516,10 @@ enqueue_copy_buffer_to_image (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Im
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
-enqueue_copy_image (OpenCL::Queue this, OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+enqueue_copy_image (OpenCL::Queue this, OpenCL::Image src, OpenCL::Image dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
@@ -532,12 +530,10 @@ enqueue_copy_image (OpenCL::Queue this, OpenCL::Image src, OpenCL::Buffer dst, s
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_copy_image_to_buffer (OpenCL::Queue this, OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t dst_offset, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
         const size_t region[3] = { width, height, depth };
@@ -547,12 +543,10 @@ enqueue_copy_image_to_buffer (OpenCL::Queue this, OpenCL::Image src, OpenCL::Buf
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_task (OpenCL::Queue this, OpenCL::Kernel kernel, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         EVENT_LIST (2, items - 2);
 
@@ -560,12 +554,10 @@ enqueue_task (OpenCL::Queue this, OpenCL::Kernel kernel, ...)
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_nd_range_kernel (OpenCL::Queue this, OpenCL::Kernel kernel, SV *global_work_offset, SV *global_work_size, SV *local_work_size = &PL_sv_undef, ...)
 	PPCODE:
-{
 	cl_event ev = 0;
         size_t *gwo = 0, *gws, *lws = 0;
         int gws_len;
@@ -614,24 +606,19 @@ enqueue_nd_range_kernel (OpenCL::Queue this, OpenCL::Kernel kernel, SV *global_w
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_marker (OpenCL::Queue this)
 	PPCODE:
-{
 	cl_event ev;
         NEED_SUCCESS (EnqueueMarker, (this, &ev));
         XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-}
 
 void
 enqueue_wait_for_events (OpenCL::Queue this, ...)
 	CODE:
-{
         EVENT_LIST (1, items - 1);
         NEED_SUCCESS (EnqueueWaitForEvents, (this, event_list_count, event_list_ptr));
-}
 
 void
 enqueue_barrier (OpenCL::Queue this)
@@ -692,18 +679,14 @@ build (OpenCL::Program this, OpenCL::Device device, SV *options = &PL_sv_undef)
 void
 build_info (OpenCL::Program this, OpenCL::Device device, cl_program_build_info name)
 	PPCODE:
-{
   	size_t size;
-        SV *sv;
- 
   	NEED_SUCCESS (GetProgramBuildInfo, (this, device, name, 0, 0, &size));
-        sv = sv_2mortal (newSV (size));
+        SV *sv = sv_2mortal (newSV (size));
         SvUPGRADE (sv, SVt_PV);
         SvPOK_only (sv);
         SvCUR_set (sv, size);
   	NEED_SUCCESS (GetProgramBuildInfo, (this, device, name, size, SvPVX (sv), 0));
         XPUSHs (sv);
-}
 
 void
 kernel (OpenCL::Program program, SV *function)

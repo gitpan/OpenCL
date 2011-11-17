@@ -30,8 +30,8 @@ kernel function in a program you can then create an OpenCL::Kernel object
 which represents basically a function call with argument values.
 
 OpenCL::Memory objects of various flavours: OpenCL::Buffers objects (flat
-memory areas, think array) and OpenCL::Image objects (think 2d or 3d
-array) for bulk data and input and output for kernels.
+memory areas, think arrays or structs) and OpenCL::Image objects (think 2d
+or 3d array) for bulk data and input and output for kernels.
 
 OpenCL::Sampler objects, which are kind of like texture filter modes in
 OpenGL.
@@ -53,6 +53,20 @@ no implementation was available to me :).
 OpenCL manpages:
 
    http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/
+
+If you are into UML class diagrams, the following diagram might help - if
+not, it will be mildly cobfusing:
+
+   http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/classDiagram.html
+
+Here's a tutorial from AMD (very AMD-centric, too), not sure how useful it
+is, but at least it's free of charge:
+
+   http://developer.amd.com/zones/OpenCLZone/courses/Documents/Introduction_to_OpenCL_Programming%20Training_Guide%20%28201005%29.pdf
+
+And here's NVIDIA's OpenCL Best Practises Guide:
+
+   http://developer.download.nvidia.com/compute/cuda/3_2/toolkit/docs/OpenCL_Best_Practices_Guide.pdf
 
 =head1 BASIC WORKFLOW
 
@@ -140,7 +154,7 @@ functions.
       __kernel void
       squareit (__global float *input, __global float *output)
       {
-        size_t id = get_global_id (0);
+        $id = get_global_id (0);
         output [id] = input [id] * input [id];
       }
    ';
@@ -203,8 +217,8 @@ showing off event objects and wait lists.
 
 =head2 BASIC CONVENTIONS
 
-This is not a 1:1 C-style translation of OpenCL to Perl - instead I
-attempted to make the interface as type-safe as possible and introducing
+This is not a one-to-one C-style translation of OpenCL to Perl - instead
+I attempted to make the interface as type-safe as possible by introducing
 object syntax where it makes sense. There are a number of important
 differences between the OpenCL C API and this module:
 
@@ -219,8 +233,11 @@ while this module uses underscores as word separator and often leaves out
 prefixes (C<< $platform->info >>).
 
 =item * OpenCL often specifies fixed vector function arguments as short
-arrays (C<size_t origin[3]>), while this module explicitly expects the
+arrays (C<$origin[3]>), while this module explicitly expects the
 components as separate arguments-
+
+=item * Structures are often specified with their components, and returned
+as arrayrefs.
 
 =item * Where possible, one of the pitch values is calculated from the
 perl scalar length and need not be specified.
@@ -373,13 +390,13 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateBuffer.html>
 
 Creates a new OpenCL::Buffer object and initialise it with the given data values.
 
-=item $img = $ctx->image2d ($flags, $channel_order, $channel_type, $width, $height, $data)
+=item $img = $ctx->image2d ($flags, $channel_order, $channel_type, $width, $height, $row_pitch = 0, $data = undef)
 
 Creates a new OpenCL::Image2D object and optionally initialises it with the given data values.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateImage2D.html>
 
-=item $img = $ctx->image3d ($flags, $channel_order, $channel_type, $width, $height, $depth, $slice_pitch, $data)
+=item $img = $ctx->image3d ($flags, $channel_order, $channel_type, $width, $height, $depth, $row_pitch = 0, $slice_pitch = 0, $data = undef)
 
 Creates a new OpenCL::Image3D object and optionally initialises it with the given data values.
 
@@ -452,25 +469,25 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBuffer.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadImage.html>
 
-=item $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $data, $wait_events...)
+=item $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteImage.html>
 
-=item $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch, $src_slice_pitch, 4dst_row_pitch, $dst_slice_pitch, $ait_event...)
+=item $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch, $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
 
 Yeah.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferRect.html>
 
-=item $ev = $queue->enqueue_copy_buffer_to_image (OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+=item $ev = $queue->enqueue_copy_buffer_to_image ($src_buffer, $dst_image, $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferToImage.html>.
 
-=item $ev = $queue->enqueue_copy_image (OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+=item $ev = $queue->enqueue_copy_image ($src_image, $dst_image, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyImage.html>
 
-=item $ev = $queue->enqueue_copy_image_to_buffer (OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t dst_offset, ...)
+=item $ev = $queue->enqueue_copy_image_to_buffer ($src_image, $dst_image, $src_x, $src_y, $src_z, $width, $height, $depth, $dst_offset, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyImageToBuffer.html>
 
@@ -645,7 +662,7 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.14';
+   our $VERSION = '0.15';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);
