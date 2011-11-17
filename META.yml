@@ -17,5 +17,6 @@ no_index:
   directory:
     - t
     - inc
-requires: {}
-version: 0.03
+requires:
+  common::sense: 0
+version: 0.14

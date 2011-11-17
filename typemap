@@ -15,6 +15,7 @@ cl_platform_info	T_IV
 cl_device_type		T_IV
 cl_device_info		T_IV
 cl_context_info		T_IV
+cl_command_queue_properties T_IV
 cl_command_queue_info	T_IV
 cl_mem_flags		T_IV
 cl_mem_info		T_IV
@@ -49,7 +50,13 @@ OpenCL::Kernel		ptrobj
 OpenCL::Event		ptrobj
 OpenCL::UserEvent	ptrobj
 
+FUTURE			future
+
 INPUT
+
+future
+	if (SvOK ($arg))
+	  croak (\"$pname argument '$var' is reserved for future extensions, it must be missing or undef in this implementation, in call\");
 
 ptrobj
 	$var = ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")

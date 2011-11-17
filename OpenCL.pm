@@ -10,7 +10,40 @@ OpenCL - Open Computing Language Bindings
 
 This is an early release which might be useful, but hasn't seen much testing.
 
-=head1 HELPFUL RESOURCES
+=head2 OpenCL FROM 10000 FEET HEIGHT
+
+Here is a high level overview of OpenCL:
+
+First you need to find one or more OpenCL::Platforms (kind of like
+vendors) - usually there is only one.
+
+Each platform gives you access to a number of OpenCL::Device objects, e.g.
+your graphics card.
+
+From a platform and some device(s), you create an OpenCL::Context, which is
+a very central object in OpenCL: Once you have a context you can create
+most other objects:
+
+OpenCL::Program objects, which store source code and, after building for a
+specific device ("compiling and linking"), also binary programs. For each
+kernel function in a program you can then create an OpenCL::Kernel object
+which represents basically a function call with argument values.
+
+OpenCL::Memory objects of various flavours: OpenCL::Buffers objects (flat
+memory areas, think array) and OpenCL::Image objects (think 2d or 3d
+array) for bulk data and input and output for kernels.
+
+OpenCL::Sampler objects, which are kind of like texture filter modes in
+OpenGL.
+
+OpenCL::Queue objects - command queues, which allow you to submit memory
+reads, writes and copies, as well as kernel calls to your devices. They
+also offer a variety of methods to synchronise request execution, for
+example with barriers or OpenCL::Event objects.
+
+OpenCL::Event objects are used to signal when something is complete.
+
+=head2 HELPFUL RESOURCES
 
 The OpenCL spec used to develop this module (1.2 spec was available, but
 no implementation was available to me :).
@@ -21,30 +54,67 @@ OpenCL manpages:
 
    http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/
 
+=head1 BASIC WORKFLOW
+
+To get something done, you basically have to do this once (refer to the
+examples below for actual code, this is just a high-level description):
+
+Find some platform (e.g. the first one) and some device(s) (e.g. the first
+device of the platform), and create a context from those.
+
+Create program objects from your OpenCL source code, then build (compile)
+the programs for each device you want to run them on.
+
+Create kernel objects for all kernels you want to use (surprisingly, these
+are not device-specific).
+
+Then, to execute stuff, you repeat these steps, possibly resuing or
+sharing some buffers:
+
+Create some input and output buffers from your context. Set these as
+arguments to your kernel.
+
+Enqueue buffer writes to initialise your input buffers (when not
+initialised at creation time).
+
+Enqueue the kernel execution.
+
+Enqueue buffer reads for your output buffer to read results.
+
 =head1 EXAMPLES
 
 =head2 Enumerate all devices and get contexts for them.
 
+Best run this once to get a feel for the platforms and devices in your
+system.
+
    for my $platform (OpenCL::platforms) {
-      warn $platform->info (OpenCL::PLATFORM_NAME);
-      warn $platform->info (OpenCL::PLATFORM_EXTENSIONS);
+      printf "platform: %s\n", $platform->info (OpenCL::PLATFORM_NAME);
+      printf "extensions: %s\n", $platform->info (OpenCL::PLATFORM_EXTENSIONS);
       for my $device ($platform->devices) {
-         warn $device->info (OpenCL::DEVICE_NAME);
-         my $ctx = $device->context_simple;
+         printf "+ device: %s\n", $device->info (OpenCL::DEVICE_NAME);
+         my $ctx = $device->context;
          # do stuff
       }
    }
 
 =head2 Get a useful context and a command queue.
 
-   my $dev = ((OpenCL::platforms)[0]->devices)[0];
-   my $ctx = $dev->context_simple;
-   my $queue = $ctx->command_queue_simple ($dev);
+This is a useful boilerplate for any OpenCL program that only wants to use
+one device,
+
+   my ($platform) = OpenCL::platforms; # find first platform
+   my ($dev) = $platform->devices;     # find first device of platform
+   my $ctx = $platform->context (undef, [$dev]); # create context out of those
+   my $queue = $ctx->queue ($dev);     # create a command queue for the device
 
 =head2 Print all supported image formats of a context.
 
+Best run this once for your context, to see whats available and how to
+gather information.
+
    for my $type (OpenCL::MEM_OBJECT_IMAGE2D, OpenCL::MEM_OBJECT_IMAGE3D) {
-      say "supported image formats for ", OpenCL::enum2str $type;
+      print "supported image formats for ", OpenCL::enum2str $type, "\n";
       
       for my $f ($ctx->supported_image_formats (0, $type)) {
          printf "  %-10s %-20s\n", OpenCL::enum2str $f->[0], OpenCL::enum2str $f->[1];
@@ -57,11 +127,11 @@ then asynchronously.
    my $buf = $ctx->buffer_sv (OpenCL::MEM_COPY_HOST_PTR, "helmut");
 
    $queue->enqueue_read_buffer ($buf, 1, 1, 3, my $data);
-   warn $data;
+   print "$data\n";
 
    my $ev = $queue->enqueue_read_buffer ($buf, 0, 1, 3, my $data);
    $ev->wait;
-   warn $data;
+   print "$data\n"; # prints "elm"
 
 =head2 Create and build a program, then create a kernel out of one of its
 functions.
@@ -77,12 +147,14 @@ functions.
 
    my $prog = $ctx->program_with_source ($src);
 
+   # build croaks on compile errors, so catch it and print the compile errors
    eval { $prog->build ($dev); 1 }
       or die $prog->build_info ($dev, OpenCL::PROGRAM_BUILD_LOG);
 
    my $kernel = $prog->kernel ("squareit");
 
-=head2 Create some input and output float buffers, then call squareit on them.
+=head2 Create some input and output float buffers, then call the
+'squareit' kernel on them.
 
    my $input  = $ctx->buffer_sv (OpenCL::MEM_COPY_HOST_PTR, pack "f*", 1, 2, 3, 4.5);
    my $output = $ctx->buffer (0, OpenCL::SIZEOF_FLOAT * 5);
@@ -98,7 +170,7 @@ functions.
    $queue->enqueue_read_buffer ($output, 1, 0, OpenCL::SIZEOF_FLOAT * 4, my $data);
 
    # print the results:
-   say join ", ", unpack "f*", $data;
+   printf "%s\n", join ", ", unpack "f*", $data;
 
 =head2 The same enqueue operations as before, but assuming an out-of-order queue,
 showing off barriers.
@@ -150,11 +222,11 @@ prefixes (C<< $platform->info >>).
 arrays (C<size_t origin[3]>), while this module explicitly expects the
 components as separate arguments-
 
-=item * Where possible, the row_pitch value is calculated from the perl
-scalar length and need not be specified.
+=item * Where possible, one of the pitch values is calculated from the
+perl scalar length and need not be specified.
 
 =item * When enqueuing commands, the wait list is specified by adding
-extra arguments to the function - everywhere a C<$wait_events...> argument
+extra arguments to the function - anywhere a C<$wait_events...> argument
 is documented this can be any number of event objects.
 
 =item * When enqueuing commands, if the enqueue method is called in void
@@ -169,21 +241,21 @@ don't normally have to to any error checking.
 
 =head2 PERL AND OPENCL TYPES
 
-This handy(?) table lists OpenCL types and their perl and pack/unpack
+This handy(?) table lists OpenCL types and their perl, PDL and pack/unpack
 format equivalents:
 
-   OpenCL    perl   pack/unpack
-   char      IV     c
-   uchar     IV     C
-   short     IV     s
-   ushort    IV     S
-   int       IV     l
-   uint      IV     L
-   long      IV     q
-   ulong     IV     Q
-   float     NV     f
-   half      IV     S
-   double    NV     d
+   OpenCL    perl   PDL       pack/unpack
+   char      IV     -         c
+   uchar     IV     byte      C
+   short     IV     short     s
+   ushort    IV     ushort    S
+   int       IV     long?     l
+   uint      IV     -         L
+   long      IV     longlong  q
+   ulong     IV     -         Q
+   float     NV     float     f
+   half      IV     ushort    S
+   double    NV     double    d
 
 =head2 THE OpenCL PACKAGE
 
@@ -191,13 +263,14 @@ format equivalents:
 
 =item $int = OpenCL::errno
 
-The last error returned by a function - it's only changed on errors.
+The last error returned by a function - it's only valid after an error occured
+and before calling another OpenCL function.
 
 =item $str = OpenCL::err2str $errval
 
 Comverts an error value into a human readable string.
 
-=item $str = OpenCL::err2str $enum
+=item $str = OpenCL::enum2str $enum
 
 Converts most enum values (inof parameter names, image format constants,
 object types, addressing and filter modes, command types etc.) into a
@@ -211,7 +284,7 @@ Returns all available OpenCL::Platform objects.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetPlatformIDs.html>
 
-=item $ctx = OpenCL::context_from_type_simple $type = OpenCL::DEVICE_TYPE_DEFAULT
+=item $ctx = OpenCL::context_from_type $properties, $type = OpenCL::DEVICE_TYPE_DEFAULT, $notify = undef
 
 Tries to create a context from a default device and platform - never worked for me.
 
@@ -241,11 +314,18 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetPlatformInfo.ht
 
 Returns a list of matching OpenCL::Device objects.
 
-=item $ctx = $platform->context_from_type_simple ($type = OpenCL::DEVICE_TYPE_DEFAULT)
+=item $ctx = $platform->context_from_type ($properties, $type = OpenCL::DEVICE_TYPE_DEFAULT, $notify = undef)
 
-Tries to create a context. Never worked for me.
+Tries to create a context. Never worked for me, and you need devices explitly anyway.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateContextFromType.html>
+
+=item $ctx = $device->context ($properties = undef, @$devices, $notify = undef)
+
+Create a new OpenCL::Context object using the given device object(s)- a
+CL_CONTEXT_PLATFORM property is supplied automatically.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateContext.html>
 
 =back
 
@@ -259,12 +339,6 @@ See C<< $platform->info >> for details.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetDeviceInfo.html>
 
-=item $ctx = $device->context_simple
-
-Convenience function to create a new OpenCL::Context object.
-
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateContext.html>
-
 =back
 
 =head2 THE OpenCL::Context CLASS
@@ -277,9 +351,9 @@ See C<< $platform->info >> for details.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetContextInfo.html>
 
-=item $queue = $ctx->command_queue_simple ($device)
+=item $queue = $ctx->queue ($device, $properties)
 
-Convenience function to create a new OpenCL::Queue object from the context and the given device.
+Create a new OpenCL::Queue object from the context and the given device.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateCommandQueue.html>
 
@@ -571,7 +645,7 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.03';
+   our $VERSION = '0.14';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);

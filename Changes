@@ -1,5 +1,20 @@
 Revision history for Perl extension OpenCL.
 
+0.14
+	- major incompatibilities due to API cleanup, the AI should now be
+          mostly stable, if incomplete.
+	- fix prerequisites.
+	- replaced all _simple functions by "full" implementations, with some
+          parameters marked for future expansion - that means their API
+          should be stable from now on:
+             OpenCL::context_from_type_simple    => OpenCL::context_from_type
+             $platform->context_from_type_simple => $platform->context_from_type
+             $dev->context_simple                => $platform->context
+             $ctx->command_queue_simple became   => $ctx->queue
+        - add OpenCL::context function.
+        - officially require C99.
+        - errno value is unspecified after a successful call.
+
 0.03  Wed Nov 16 01:44:26 CET 2011
 	- add some reference documentation for all functions.
         - add user event support.

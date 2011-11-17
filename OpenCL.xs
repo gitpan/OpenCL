@@ -24,6 +24,8 @@ typedef cl_kernel            OpenCL__Kernel;
 typedef cl_event             OpenCL__Event;
 typedef cl_event             OpenCL__UserEvent;
 
+typedef SV *FUTURE;
+
 /*****************************************************************************/
 
 /* up to two temporary buffers */
@@ -92,18 +94,23 @@ err2str (cl_int err)
 
 /*****************************************************************************/
 
-static cl_int last_error;
+static cl_int res;
 
-#define FAIL(name,err) \
-  croak ("cl" # name ": %s", err2str (last_error = err));
+#define FAIL(name) \
+  croak ("cl" # name ": %s", err2str (res));
 
 #define NEED_SUCCESS(name,args) \
   do { \
-    cl_int res = cl ## name args; \
+    res = cl ## name args; \
     \
     if (res) \
-      FAIL (name, res); \
+      FAIL (name); \
   } while (0)
+
+#define NEED_SUCCESS_ARG(retdecl, name, args) \
+  retdecl = cl ## name args; \
+  if (res) \
+    FAIL (name);
 
 /*****************************************************************************/
 
@@ -140,7 +147,7 @@ event_list (SV **items, int count)
 { \
   	size_t size; \
         SV *sv; \
- \
+	\
   	NEED_SUCCESS (Get ## class ## Info, (this, name, 0, 0, &size)); \
         sv = sv_2mortal (newSV (size)); \
         SvUPGRADE (sv, SVt_PV); \
@@ -178,7 +185,7 @@ BOOT:
 cl_int
 errno ()
 	CODE:
-        errno = last_error;
+        errno = res;
 
 const char *
 err2str (cl_int err)
@@ -204,17 +211,15 @@ platforms ()
 }
 
 void
-context_from_type_simple (cl_device_type type = CL_DEVICE_TYPE_DEFAULT)
+context_from_type (FUTURE properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, FUTURE notify = 0)
 	PPCODE:
-{
-	cl_int res;
-  	cl_context ctx = clCreateContextFromType (0, type, 0, 0, &res);
-
-        if (res)
-          FAIL (CreateContextFromType, res);
-
+        NEED_SUCCESS_ARG (cl_context ctx, CreateContextFromType, (0, type, 0, 0, &res));
         XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
-}
+
+void
+context (FUTURE properties, FUTURE devices, FUTURE notify = 0)
+	PPCODE:
+	/* der Gipfel der Kunst */
 
 void
 wait_for_events (...)
@@ -251,18 +256,28 @@ devices (OpenCL::Platform this, cl_device_type type = CL_DEVICE_TYPE_ALL)
 }
 
 void
-context_from_type_simple (OpenCL::Platform this, cl_device_type type = CL_DEVICE_TYPE_DEFAULT)
+context (OpenCL::Platform this, FUTURE properties, SV *devices, FUTURE notify = 0)
 	PPCODE:
-{
-	cl_int res;
-	cl_context_properties props[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)this, 0 };
-  	cl_context ctx = clCreateContextFromType (props, type, 0, 0, &res);
+        if (!SvROK (devices) || SvTYPE (SvRV (devices)) != SVt_PVAV)
+          croak ("OpenCL::Platform argument 'device' must be an arrayref with device objects, in call");
 
-        if (res)
-          FAIL (CreateContextFromType, res);
+        AV *av = (SV *)SvRV (devices);
+        cl_uint num_devices = av_len (av) + 1;
+        cl_device_id *device_list = tmpbuf (sizeof (cl_device_id) * num_devices);
+        int i;
 
+        for (i = num_devices; i--; )
+          device_list [i] = SvPTROBJ ("clCreateContext", "devices", *av_fetch (av, i, 0), "OpenCL::Device");
+
+  	NEED_SUCCESS_ARG (cl_context ctx, CreateContext, (0, num_devices, device_list, 0, 0, &res));
         XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
-}
+
+void
+context_from_type (OpenCL::Platform this, FUTURE properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, FUTURE notify = 0)
+	PPCODE:
+	cl_context_properties props[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)this, 0 };
+        NEED_SUCCESS_ARG (cl_context ctx, CreateContextFromType, (props, type, 0, 0, &res));
+        XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
 
 MODULE = OpenCL		PACKAGE = OpenCL::Device
 
@@ -270,19 +285,6 @@ void
 info (OpenCL::Device this, cl_device_info name)
 	PPCODE:
         INFO (Device)
-
-void
-context_simple (OpenCL::Device this)
-	PPCODE:
-{
-	cl_int res;
-  	cl_context ctx = clCreateContext (0, 1, &this, 0, 0, &res);
-
-        if (res)
-          FAIL (CreateContext, res);
-
-        XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
-}
 
 MODULE = OpenCL		PACKAGE = OpenCL::Context
 
@@ -297,101 +299,56 @@ info (OpenCL::Context this, cl_context_info name)
         INFO (Context)
 
 void
-command_queue_simple (OpenCL::Context this, OpenCL::Device device)
+queue (OpenCL::Context this, OpenCL::Device device, cl_command_queue_properties properties = 0)
 	PPCODE:
-{
-	cl_int res;
-  	cl_command_queue queue = clCreateCommandQueue (this, device, 0, &res);
-
-        if (res)
-          FAIL (CreateCommandQueue, res);
-
+  	NEED_SUCCESS_ARG (cl_command_queue queue, CreateCommandQueue, (this, device, properties, &res));
         XPUSH_NEW_OBJ ("OpenCL::Queue", queue);
-}
 
 void
 user_event (OpenCL::Context this)
 	PPCODE:
-{
-	cl_int res;
-  	cl_event ev = clCreateUserEvent (this, &res);
-
-        if (res)
-          FAIL (CreateUserevent, res);
-
+  	NEED_SUCCESS_ARG (cl_event ev, CreateUserEvent, (this, &res));
         XPUSH_NEW_OBJ ("OpenCL::UserEvent", ev);
-}
 
 void
 buffer (OpenCL::Context this, cl_mem_flags flags, size_t len)
 	PPCODE:
-{
-	cl_int res;
-  	cl_mem mem;
-
         if (flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR))
           croak ("clCreateBuffer: cannot use/copy host ptr when no data is given, use $context->buffer_sv instead?");
         
-        mem = clCreateBuffer (this, flags, len, 0, &res);
-
-        if (res)
-          FAIL (CreateBuffer, res);
-
+        NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (this, flags, len, 0, &res));
         XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
-}
 
 void
 buffer_sv (OpenCL::Context this, cl_mem_flags flags, SV *data)
 	PPCODE:
-{
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
-	cl_int res;
-  	cl_mem mem;
         
         if (!(flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR)))
           croak ("clCreateBuffer: have to specify use or copy host ptr when buffer data is given, use $context->buffer instead?");
         
-        mem = clCreateBuffer (this, flags, len, ptr, &res);
-
-        if (res)
-          FAIL (CreateBuffer, res);
-
+        NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (this, flags, len, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
-}
 
 void
 image2d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, SV *data)
 	PPCODE:
-{
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
         const cl_image_format format = { channel_order, channel_type };
-	cl_int res;
-  	cl_mem mem = clCreateImage2D (this, flags, &format, width, height, len / height, ptr, &res);
-
-        if (res)
-          FAIL (CreateImage2D, res);
-
+  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage2D, (this, flags, &format, width, height, len / height, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
-}
 
 void
 image3d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t depth, size_t slice_pitch, SV *data)
 	PPCODE:
-{
 	STRLEN len;
         char *ptr = SvPVbyte (data, len);
         const cl_image_format format = { channel_order, channel_type };
-	cl_int res;
-  	cl_mem mem = clCreateImage3D (this, flags, &format, width, height,
-                                      depth, len / (height * slice_pitch), slice_pitch, ptr, &res);
-
-        if (res)
-          FAIL (CreateImage3D, res);
-
+  	NEED_SUCCESS_ARG (cl_mem mem, CreateImage3D, (this, flags, &format, width, height,
+                                                      depth, len / (height * slice_pitch), slice_pitch, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image3D", mem);
-}
 
 void
 supported_image_formats (OpenCL::Context this, cl_mem_flags flags, cl_mem_object_type image_type)
@@ -418,34 +375,19 @@ supported_image_formats (OpenCL::Context this, cl_mem_flags flags, cl_mem_object
 void
 sampler (OpenCL::Context this, cl_bool normalized_coords, cl_addressing_mode addressing_mode, cl_filter_mode filter_mode)
 	PPCODE:
-{
-	cl_int res;
-  	cl_sampler sampler = clCreateSampler (this, normalized_coords, addressing_mode, filter_mode, &res);
-
-        if (res)
-          FAIL (CreateSampler, res);
-
+  	NEED_SUCCESS_ARG (cl_sampler sampler, CreateSampler, (this, normalized_coords, addressing_mode, filter_mode, &res));
         XPUSH_NEW_OBJ ("OpenCL::Sampler", sampler);
-}
 
 void
 program_with_source (OpenCL::Context this, SV *program)
 	PPCODE:
-{
 	STRLEN len;
         size_t len2;
         const char *ptr = SvPVbyte (program, len);
-	cl_int res;
-  	cl_program prog;
         
         len2 = len;
-        prog = clCreateProgramWithSource (this, 1, &ptr, &len2, &res);
-
-        if (res)
-          FAIL (CreateProgramWithSource, res);
-
+  	NEED_SUCCESS_ARG (cl_program prog, CreateProgramWithSource, (this, 1, &ptr, &len2, &res));
         XPUSH_NEW_OBJ ("OpenCL::Program", prog);
-}
 
 MODULE = OpenCL		PACKAGE = OpenCL::Queue
 
@@ -766,15 +708,8 @@ build_info (OpenCL::Program this, OpenCL::Device device, cl_program_build_info n
 void
 kernel (OpenCL::Program program, SV *function)
 	PPCODE:
-{
-	cl_int res;
-  	cl_kernel kernel = clCreateKernel (program, SvPVbyte_nolen (function), &res);
-
-        if (res)
-          FAIL (CreateKernel, res);
-
+  	NEED_SUCCESS_ARG (cl_kernel kernel, CreateKernel, (program, SvPVbyte_nolen (function), &res));
         XPUSH_NEW_OBJ ("OpenCL::Kernel", kernel);
-}
 
 MODULE = OpenCL		PACKAGE = OpenCL::Kernel
 

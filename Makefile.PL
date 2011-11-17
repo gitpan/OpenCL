@@ -6,7 +6,7 @@ WriteMakefile(
 	            COMPRESS	=> 'gzip -9v',
 	            SUFFIX	=> '.gz',
 	           },
-    PM_PREREQ => {
+    PREREQ_PM => {
        common::sense => 0,
     },
     NAME => "OpenCL",
