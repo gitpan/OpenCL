@@ -26,9 +26,9 @@ DESCRIPTION
     each kernel function in a program you can then create an OpenCL::Kernel
     object which represents basically a function call with argument values.
 
-    OpenCL::Memory objects of various flavours: OpenCL::Buffers objects
-    (flat memory areas, think arrays or structs) and OpenCL::Image objects
-    (think 2d or 3d array) for bulk data and input and output for kernels.
+    OpenCL::Memory objects of various flavours: OpenCL::Buffer objects (flat
+    memory areas, think arrays or structs) and OpenCL::Image objects (think
+    2d or 3d array) for bulk data and input and output for kernels.
 
     OpenCL::Sampler objects, which are kind of like texture filter modes in
     OpenGL.
@@ -210,19 +210,18 @@ DOCUMENTATION
         objects explicitly ("clReleaseXXX"), the release function is called
         automatically once all Perl references to it go away.
 
-    *   OpenCL uses CamelCase for function names ("clGetPlatformInfo"),
-        while this module uses underscores as word separator and often
-        leaves out prefixes ("$platform->info").
+    *   OpenCL uses CamelCase for function names (e.g. "clGetPlatformIDs",
+        "clGetPlatformInfo"), while this module uses underscores as word
+        separator and often leaves out prefixes ("OpenCL::platforms",
+        "$platform->info").
 
     *   OpenCL often specifies fixed vector function arguments as short
-        arrays ($origin[3]), while this module explicitly expects the
-        components as separate arguments-
+        arrays ("size_t origin[3]"), while this module explicitly expects
+        the components as separate arguments ("$orig_x, $orig_y, $orig_z")
+        in function calls.
 
-    *   Structures are often specified with their components, and returned
-        as arrayrefs.
-
-    *   Where possible, one of the pitch values is calculated from the perl
-        scalar length and need not be specified.
+    *   Structures are often specified by flattening out their components as
+        with short vectors, and returned as arrayrefs.
 
     *   When enqueuing commands, the wait list is specified by adding extra
         arguments to the function - anywhere a "$wait_events..." argument is
@@ -289,15 +288,6 @@ DOCUMENTATION
         Events.html>
 
   THE OpenCL::Platform CLASS
-    $packed_value = $platform->info ($name)
-        Calls "clGetPlatformInfo" and returns the packed, raw value - for
-        strings, this will be the string, for other values you probably need
-        to use the correct "unpack". This might get improved in the future.
-        Hopefully.
-
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetPlat
-        formInfo.html>
-
     @devices = $platform->devices ($type = OpenCL::DEVICE_TYPE_ALL)
         Returns a list of matching OpenCL::Device objects.
 
@@ -317,6 +307,37 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateC
         ontext.html>
 
+    $packed_value = $platform->info ($name)
+        Calls "clGetPlatformInfo" and returns the packed, raw value - for
+        strings, this will be the string, for other values you probably need
+        to use the correct "unpack".
+
+        It's best to avoid this method and use one of the predefined "get_*"
+        methods.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetPlat
+        formInfo.html>
+
+    $string = $platform->profile
+        Calls "clGetPlatformInfo" with "CL_PLATFORM_PROFILE" and returns the
+        result(s).
+
+    $string = $platform->version
+        Calls "clGetPlatformInfo" with "CL_PLATFORM_VERSION" and returns the
+        result(s).
+
+    $string = $platform->name
+        Calls "clGetPlatformInfo" with "CL_PLATFORM_NAME" and returns the
+        result(s).
+
+    $string = $platform->vendor
+        Calls "clGetPlatformInfo" with "CL_PLATFORM_VENDOR" and returns the
+        result(s).
+
+    $string = $platform->extensions
+        Calls "clGetPlatformInfo" with "CL_PLATFORM_EXTENSIONS" and returns
+        the result(s).
+
   THE OpenCL::Device CLASS
     $packed_value = $device->info ($name)
         See "$platform->info" for details.
@@ -324,13 +345,271 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetDevi
         ceInfo.html>
 
+    $device_type = $device->type
+        Calls "clGetDeviceInfo" with "CL_DEVICE_TYPE" and returns the
+        result(s).
+
+    $uint = $device->vendor_id
+        Calls "clGetDeviceInfo" with "CL_DEVICE_VENDOR_ID" and returns the
+        result(s).
+
+    $uint = $device->max_compute_units
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_COMPUTE_UNITS" and
+        returns the result(s).
+
+    $uint = $device->max_work_item_dimensions
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS"
+        and returns the result(s).
+
+    $int = $device->max_work_group_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_WORK_GROUP_SIZE" and
+        returns the result(s).
+
+    @ints = $device->max_work_item_sizes
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_WORK_ITEM_SIZES" and
+        returns the result(s).
+
+    $uint = $device->preferred_vector_width_char
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR"
+        and returns the result(s).
+
+    $uint = $device->preferred_vector_width_short
+        Calls "clGetDeviceInfo" with
+        "CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT" and returns the result(s).
+
+    $uint = $device->preferred_vector_width_int
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT"
+        and returns the result(s).
+
+    $uint = $device->preferred_vector_width_long
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG"
+        and returns the result(s).
+
+    $uint = $device->preferred_vector_width_float
+        Calls "clGetDeviceInfo" with
+        "CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT" and returns the result(s).
+
+    $uint = $device->preferred_vector_width_double
+        Calls "clGetDeviceInfo" with
+        "CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE" and returns the result(s).
+
+    $uint = $device->max_clock_frequency
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_CLOCK_FREQUENCY" and
+        returns the result(s).
+
+    $bitfield = $device->address_bits
+        Calls "clGetDeviceInfo" with "CL_DEVICE_ADDRESS_BITS" and returns
+        the result(s).
+
+    $uint = $device->max_read_image_args
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_READ_IMAGE_ARGS" and
+        returns the result(s).
+
+    $uint = $device->max_write_image_args
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_WRITE_IMAGE_ARGS" and
+        returns the result(s).
+
+    $ulong = $device->max_mem_alloc_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_MEM_ALLOC_SIZE" and
+        returns the result(s).
+
+    $int = $device->image2d_max_width
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE2D_MAX_WIDTH" and
+        returns the result(s).
+
+    $int = $device->image2d_max_height
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE2D_MAX_HEIGHT" and
+        returns the result(s).
+
+    $int = $device->image3d_max_width
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE3D_MAX_WIDTH" and
+        returns the result(s).
+
+    $int = $device->image3d_max_height
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE3D_MAX_HEIGHT" and
+        returns the result(s).
+
+    $int = $device->image3d_max_depth
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE3D_MAX_DEPTH" and
+        returns the result(s).
+
+    $uint = $device->image_support
+        Calls "clGetDeviceInfo" with "CL_DEVICE_IMAGE_SUPPORT" and returns
+        the result(s).
+
+    $int = $device->max_parameter_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_PARAMETER_SIZE" and
+        returns the result(s).
+
+    $uint = $device->max_samplers
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_SAMPLERS" and returns
+        the result(s).
+
+    $uint = $device->mem_base_addr_align
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MEM_BASE_ADDR_ALIGN" and
+        returns the result(s).
+
+    $uint = $device->min_data_type_align_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE"
+        and returns the result(s).
+
+    $device_fp_config = $device->single_fp_config
+        Calls "clGetDeviceInfo" with "CL_DEVICE_SINGLE_FP_CONFIG" and
+        returns the result(s).
+
+    $device_mem_cache_type = $device->global_mem_cache_type
+        Calls "clGetDeviceInfo" with "CL_DEVICE_GLOBAL_MEM_CACHE_TYPE" and
+        returns the result(s).
+
+    $uint = $device->global_mem_cacheline_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE"
+        and returns the result(s).
+
+    $ulong = $device->global_mem_cache_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_GLOBAL_MEM_CACHE_SIZE" and
+        returns the result(s).
+
+    $ulong = $device->global_mem_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_GLOBAL_MEM_SIZE" and returns
+        the result(s).
+
+    $ulong = $device->max_constant_buffer_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE"
+        and returns the result(s).
+
+    $uint = $device->max_constant_args
+        Calls "clGetDeviceInfo" with "CL_DEVICE_MAX_CONSTANT_ARGS" and
+        returns the result(s).
+
+    $device_local_mem_type = $device->local_mem_type
+        Calls "clGetDeviceInfo" with "CL_DEVICE_LOCAL_MEM_TYPE" and returns
+        the result(s).
+
+    $ulong = $device->local_mem_size
+        Calls "clGetDeviceInfo" with "CL_DEVICE_LOCAL_MEM_SIZE" and returns
+        the result(s).
+
+    $boolean = $device->error_correction_support
+        Calls "clGetDeviceInfo" with "CL_DEVICE_ERROR_CORRECTION_SUPPORT"
+        and returns the result(s).
+
+    $int = $device->profiling_timer_resolution
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PROFILING_TIMER_RESOLUTION"
+        and returns the result(s).
+
+    $boolean = $device->endian_little
+        Calls "clGetDeviceInfo" with "CL_DEVICE_ENDIAN_LITTLE" and returns
+        the result(s).
+
+    $boolean = $device->available
+        Calls "clGetDeviceInfo" with "CL_DEVICE_AVAILABLE" and returns the
+        result(s).
+
+    $boolean = $device->compiler_available
+        Calls "clGetDeviceInfo" with "CL_DEVICE_COMPILER_AVAILABLE" and
+        returns the result(s).
+
+    $device_exec_capabilities = $device->execution_capabilities
+        Calls "clGetDeviceInfo" with "CL_DEVICE_EXECUTION_CAPABILITIES" and
+        returns the result(s).
+
+    $command_queue_properties = $device->properties
+        Calls "clGetDeviceInfo" with "CL_DEVICE_QUEUE_PROPERTIES" and
+        returns the result(s).
+
+    $ = $device->platform
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PLATFORM" and returns the
+        result(s).
+
+    $string = $device->name
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NAME" and returns the
+        result(s).
+
+    $string = $device->vendor
+        Calls "clGetDeviceInfo" with "CL_DEVICE_VENDOR" and returns the
+        result(s).
+
+    $string = $device->driver_version
+        Calls "clGetDeviceInfo" with "CL_DRIVER_VERSION" and returns the
+        result(s).
+
+    $string = $device->profile
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PROFILE" and returns the
+        result(s).
+
+    $string = $device->version
+        Calls "clGetDeviceInfo" with "CL_DEVICE_VERSION" and returns the
+        result(s).
+
+    $string = $device->extensions
+        Calls "clGetDeviceInfo" with "CL_DEVICE_EXTENSIONS" and returns the
+        result(s).
+
+    $uint = $device->preferred_vector_width_half
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PREFERRED_VECTOR_WIDTH_HALF"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_char
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_short
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_SHORT"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_int
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_INT" and
+        returns the result(s).
+
+    $uint = $device->native_vector_width_long
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_LONG"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_float
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_FLOAT"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_double
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE"
+        and returns the result(s).
+
+    $uint = $device->native_vector_width_half
+        Calls "clGetDeviceInfo" with "CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF"
+        and returns the result(s).
+
+    $device_fp_config = $device->double_fp_config
+        Calls "clGetDeviceInfo" with "CL_DEVICE_DOUBLE_FP_CONFIG" and
+        returns the result(s).
+
+    $device_fp_config = $device->half_fp_config
+        Calls "clGetDeviceInfo" with "CL_DEVICE_HALF_FP_CONFIG" and returns
+        the result(s).
+
+    $boolean = $device->host_unified_memory
+        Calls "clGetDeviceInfo" with "CL_DEVICE_HOST_UNIFIED_MEMORY" and
+        returns the result(s).
+
+    $device = $device->parent_device_ext
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PARENT_DEVICE_EXT" and
+        returns the result(s).
+
+    @device_partition_property_exts = $device->partition_types_ext
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PARTITION_TYPES_EXT" and
+        returns the result(s).
+
+    @device_partition_property_exts = $device->affinity_domains_ext
+        Calls "clGetDeviceInfo" with "CL_DEVICE_AFFINITY_DOMAINS_EXT" and
+        returns the result(s).
+
+    $uint = $device->reference_count_ext
+        Calls "clGetDeviceInfo" with "CL_DEVICE_REFERENCE_COUNT_EXT " and
+        returns the result(s).
+
+    @device_partition_property_exts = $device->partition_style_ext
+        Calls "clGetDeviceInfo" with "CL_DEVICE_PARTITION_STYLE_EXT" and
+        returns the result(s).
+
   THE OpenCL::Context CLASS
-    $packed_value = $ctx->info ($name)
-        See "$platform->info" for details.
-
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetCont
-        extInfo.html>
-
     $queue = $ctx->queue ($device, $properties)
         Create a new OpenCL::Queue object from the context and the given
         device.
@@ -391,6 +670,28 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateP
         rogramWithSource.html>
 
+    $packed_value = $ctx->info ($name)
+        See "$platform->info" for details.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetCont
+        extInfo.html>
+
+    $uint = $context->reference_count
+        Calls "clGetContextInfo" with "CL_CONTEXT_REFERENCE_COUNT" and
+        returns the result(s).
+
+    @devices = $context->devices
+        Calls "clGetContextInfo" with "CL_CONTEXT_DEVICES" and returns the
+        result(s).
+
+    @property_ints = $context->properties
+        Calls "clGetContextInfo" with "CL_CONTEXT_PROPERTIES" and returns
+        the result(s).
+
+    $uint = $context->num_devices
+        Calls "clGetContextInfo" with "CL_CONTEXT_NUM_DEVICES" and returns
+        the result(s).
+
   THE OpenCL::Queue CLASS
     An OpenCL::Queue represents an execution queue for OpenCL. You execute
     requests by calling their respective "enqueue_xxx" method and waitinf
@@ -407,12 +708,6 @@ DOCUMENTATION
     Queues execute in-order by default, without any parallelism, so in most
     cases (i.e. you use only one queue) it's not necessary to wait for or
     create event objects.
-
-    $packed_value = $ctx->info ($name)
-        See "$platform->info" for details.
-
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetComm
-        andQueueInfo.html>
 
     $ev = $queue->enqueue_read_buffer ($buffer, $blocking, $offset, $len,
     $data, $wait_events...)
@@ -512,16 +807,110 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clFinish.
         html>
 
+    $packed_value = $queue->info ($name)
+        See "$platform->info" for details.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetComm
+        andQueueInfo.html>
+
+    $ctx = $command_queue->context
+        Calls "clGetCommandQueueInfo" with "CL_QUEUE_CONTEXT" and returns
+        the result(s).
+
+    $device = $command_queue->device
+        Calls "clGetCommandQueueInfo" with "CL_QUEUE_DEVICE" and returns the
+        result(s).
+
+    $uint = $command_queue->reference_count
+        Calls "clGetCommandQueueInfo" with "CL_QUEUE_REFERENCE_COUNT" and
+        returns the result(s).
+
+    $command_queue_properties = $command_queue->properties
+        Calls "clGetCommandQueueInfo" with "CL_QUEUE_PROPERTIES" and returns
+        the result(s).
+
   THE OpenCL::Memory CLASS
     This the superclass of all memory objects - OpenCL::Buffer,
-    OpenCL::Image, OpenCL::Image2D and OpenCL::Image3D. The subclasses of
-    this class currently only exist to allow type-checking.
+    OpenCL::Image, OpenCL::Image2D and OpenCL::Image3D.
 
     $packed_value = $memory->info ($name)
         See "$platform->info" for details.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetMemO
         bjectInfo.html>
+
+    $mem_object_type = $mem->type
+        Calls "clGetMemObjectInfo" with "CL_MEM_TYPE" and returns the
+        result(s).
+
+    $mem_flags = $mem->flags
+        Calls "clGetMemObjectInfo" with "CL_MEM_FLAGS" and returns the
+        result(s).
+
+    $int = $mem->size
+        Calls "clGetMemObjectInfo" with "CL_MEM_SIZE" and returns the
+        result(s).
+
+    $ptr_value = $mem->host_ptr
+        Calls "clGetMemObjectInfo" with "CL_MEM_HOST_PTR" and returns the
+        result(s).
+
+    $uint = $mem->map_count
+        Calls "clGetMemObjectInfo" with "CL_MEM_MAP_COUNT" and returns the
+        result(s).
+
+    $uint = $mem->reference_count
+        Calls "clGetMemObjectInfo" with "CL_MEM_REFERENCE_COUNT" and returns
+        the result(s).
+
+    $ctx = $mem->context
+        Calls "clGetMemObjectInfo" with "CL_MEM_CONTEXT" and returns the
+        result(s).
+
+    $mem = $mem->associated_memobject
+        Calls "clGetMemObjectInfo" with "CL_MEM_ASSOCIATED_MEMOBJECT" and
+        returns the result(s).
+
+    $int = $mem->offset
+        Calls "clGetMemObjectInfo" with "CL_MEM_OFFSET" and returns the
+        result(s).
+
+  THE OpenCL::Image CLASS
+    This is the superclass of all image objects - OpenCL::Image2D and
+    OpenCL::Image3D.
+
+    $packed_value = $ev->image_info ($name)
+        See "$platform->info" for details.
+
+        The reason this method is not called "info" is that there already is
+        an "->info" method inherited from "OpenCL::Memory".
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetImag
+        eInfo.html>
+
+    $int = $image->element_size
+        Calls "clGetImageInfo" with "CL_IMAGE_ELEMENT_SIZE" and returns the
+        result(s).
+
+    $int = $image->row_pitch
+        Calls "clGetImageInfo" with "CL_IMAGE_ROW_PITCH" and returns the
+        result(s).
+
+    $int = $image->slice_pitch
+        Calls "clGetImageInfo" with "CL_IMAGE_SLICE_PITCH" and returns the
+        result(s).
+
+    $int = $image->width
+        Calls "clGetImageInfo" with "CL_IMAGE_WIDTH" and returns the
+        result(s).
+
+    $int = $image->height
+        Calls "clGetImageInfo" with "CL_IMAGE_HEIGHT" and returns the
+        result(s).
+
+    $int = $image->depth
+        Calls "clGetImageInfo" with "CL_IMAGE_DEPTH" and returns the
+        result(s).
 
   THE OpenCL::Sampler CLASS
     $packed_value = $sampler->info ($name)
@@ -530,13 +919,27 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetSamp
         lerInfo.html>
 
+    $uint = $sampler->reference_count
+        Calls "clGetSamplerInfo" with "CL_SAMPLER_REFERENCE_COUNT" and
+        returns the result(s).
+
+    $ctx = $sampler->context
+        Calls "clGetSamplerInfo" with "CL_SAMPLER_CONTEXT" and returns the
+        result(s).
+
+    $addressing_mode = $sampler->normalized_coords
+        Calls "clGetSamplerInfo" with "CL_SAMPLER_NORMALIZED_COORDS" and
+        returns the result(s).
+
+    $filter_mode = $sampler->addressing_mode
+        Calls "clGetSamplerInfo" with "CL_SAMPLER_ADDRESSING_MODE" and
+        returns the result(s).
+
+    $boolean = $sampler->filter_mode
+        Calls "clGetSamplerInfo" with "CL_SAMPLER_FILTER_MODE" and returns
+        the result(s).
+
   THE OpenCL::Program CLASS
-    $packed_value = $program->info ($name)
-        See "$platform->info" for details.
-
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetProg
-        ramInfo.html>
-
     $program->build ($device, $options = "")
         Tries to build the program with the givne options.
 
@@ -557,12 +960,104 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateK
         ernel.html>
 
+    $build_status = $program->build_status ($device)
+        Calls "clGetProgramBuildInfo" with "CL_PROGRAM_BUILD_STATUS" and
+        returns the result(s).
+
+    $string = $program->build_options ($device)
+        Calls "clGetProgramBuildInfo" with "CL_PROGRAM_BUILD_OPTIONS" and
+        returns the result(s).
+
+    $string = $program->build_log ($device)
+        Calls "clGetProgramBuildInfo" with "CL_PROGRAM_BUILD_LOG" and
+        returns the result(s).
+
+    $packed_value = $program->info ($name)
+        See "$platform->info" for details.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetProg
+        ramInfo.html>
+
+    $uint = $program->reference_count
+        Calls "clGetProgramInfo" with "CL_PROGRAM_REFERENCE_COUNT" and
+        returns the result(s).
+
+    $ctx = $program->context
+        Calls "clGetProgramInfo" with "CL_PROGRAM_CONTEXT" and returns the
+        result(s).
+
+    $uint = $program->num_devices
+        Calls "clGetProgramInfo" with "CL_PROGRAM_NUM_DEVICES" and returns
+        the result(s).
+
+    @devices = $program->devices
+        Calls "clGetProgramInfo" with "CL_PROGRAM_DEVICES" and returns the
+        result(s).
+
+    $string = $program->source
+        Calls "clGetProgramInfo" with "CL_PROGRAM_SOURCE" and returns the
+        result(s).
+
+    @ints = $program->binary_sizes
+        Calls "clGetProgramInfo" with "CL_PROGRAM_BINARY_SIZES" and returns
+        the result(s).
+
   THE OpenCL::Kernel CLASS
     $packed_value = $kernel->info ($name)
         See "$platform->info" for details.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetKern
         elInfo.html>
+
+    $string = $kernel->function_name
+        Calls "clGetKernelInfo" with "CL_KERNEL_FUNCTION_NAME" and returns
+        the result(s).
+
+    $uint = $kernel->num_args
+        Calls "clGetKernelInfo" with "CL_KERNEL_NUM_ARGS" and returns the
+        result(s).
+
+    $uint = $kernel->reference_count
+        Calls "clGetKernelInfo" with "CL_KERNEL_REFERENCE_COUNT" and returns
+        the result(s).
+
+    $ctx = $kernel->context
+        Calls "clGetKernelInfo" with "CL_KERNEL_CONTEXT" and returns the
+        result(s).
+
+    $program = $kernel->program
+        Calls "clGetKernelInfo" with "CL_KERNEL_PROGRAM" and returns the
+        result(s).
+
+    $packed_value = $kernel->work_group_info ($device, $name)
+        See "$platform->info" for details.
+
+        The reason this method is not called "info" is that there already is
+        an "->info" method.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetKern
+        elWorkGroupInfo.html>
+
+    $int = $kernel->work_group_size ($device)
+        Calls "clGetKernelWorkGroupInfo" with "CL_KERNEL_WORK_GROUP_SIZE"
+        and returns the result(s).
+
+    @ints = $kernel->compile_work_group_size ($device)
+        Calls "clGetKernelWorkGroupInfo" with
+        "CL_KERNEL_COMPILE_WORK_GROUP_SIZE" and returns the result(s).
+
+    $ulong = $kernel->local_mem_size ($device)
+        Calls "clGetKernelWorkGroupInfo" with "CL_KERNEL_LOCAL_MEM_SIZE" and
+        returns the result(s).
+
+    $int = $kernel->preferred_work_group_size_multiple ($device)
+        Calls "clGetKernelWorkGroupInfo" with
+        "CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE" and returns the
+        result(s).
+
+    $ulong = $kernel->private_mem_size ($device)
+        Calls "clGetKernelWorkGroupInfo" with "CL_KERNEL_PRIVATE_MEM_SIZE"
+        and returns the result(s).
 
     $kernel->set_TYPE ($index, $value)
         This is a family of methods to set the kernel argument with the
@@ -584,17 +1079,62 @@ DOCUMENTATION
     This is the superclass for all event objects (including
     OpenCL::UserEvent objects).
 
+    $ev->wait
+        Waits for the event to complete.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clWaitFor
+        Events.html>
+
     $packed_value = $ev->info ($name)
         See "$platform->info" for details.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetEven
         tInfo.html>
 
-    $ev->wait
-        Waits for the event to complete.
+    $queue = $event->command_queue
+        Calls "clGetEventInfo" with "CL_EVENT_COMMAND_QUEUE" and returns the
+        result(s).
 
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clWaitFor
-        Events.html>
+    $command_type = $event->command_type
+        Calls "clGetEventInfo" with "CL_EVENT_COMMAND_TYPE" and returns the
+        result(s).
+
+    $uint = $event->reference_count
+        Calls "clGetEventInfo" with "CL_EVENT_REFERENCE_COUNT" and returns
+        the result(s).
+
+    $uint = $event->command_execution_status
+        Calls "clGetEventInfo" with "CL_EVENT_COMMAND_EXECUTION_STATUS" and
+        returns the result(s).
+
+    $ctx = $event->context
+        Calls "clGetEventInfo" with "CL_EVENT_CONTEXT" and returns the
+        result(s).
+
+    $packed_value = $ev->profiling_info ($name)
+        See "$platform->info" for details.
+
+        The reason this method is not called "info" is that there already is
+        an "->info" method.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetProf
+        ilingInfo.html>
+
+    $ulong = $event->profiling_command_queued
+        Calls "clGetEventProfilingInfo" with "CL_PROFILING_COMMAND_QUEUED"
+        and returns the result(s).
+
+    $ulong = $event->profiling_command_submit
+        Calls "clGetEventProfilingInfo" with "CL_PROFILING_COMMAND_SUBMIT"
+        and returns the result(s).
+
+    $ulong = $event->profiling_command_start
+        Calls "clGetEventProfilingInfo" with "CL_PROFILING_COMMAND_START"
+        and returns the result(s).
+
+    $ulong = $event->profiling_command_end
+        Calls "clGetEventProfilingInfo" with "CL_PROFILING_COMMAND_END" and
+        returns the result(s).
 
   THE OpenCL::UserEvent CLASS
     This is a subclass of OpenCL::Event.

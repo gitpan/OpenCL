@@ -240,6 +240,70 @@ info (OpenCL::Platform this, cl_platform_info name)
 	PPCODE:
         INFO (Platform)
 
+#BEGIN:platform
+
+void
+profile (OpenCL::Platform this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_PROFILE,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_PROFILE, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+version (OpenCL::Platform this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_VERSION,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_VERSION, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+name (OpenCL::Platform this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_NAME,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_NAME, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+vendor (OpenCL::Platform this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_VENDOR,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_VENDOR, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+extensions (OpenCL::Platform this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_EXTENSIONS,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetPlatformInfo, (this, CL_PLATFORM_EXTENSIONS, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+#END:platform
+
 void
 devices (OpenCL::Platform this, cl_device_type type = CL_DEVICE_TYPE_ALL)
 	PPCODE:
@@ -285,6 +349,638 @@ void
 info (OpenCL::Device this, cl_device_info name)
 	PPCODE:
         INFO (Device)
+
+#BEGIN:device
+
+void
+type (OpenCL::Device this)
+ PPCODE:
+ cl_device_type value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_TYPE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+vendor_id (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_VENDOR_ID, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_compute_units (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_work_item_dimensions (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_work_group_size (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_work_item_sizes (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_WORK_ITEM_SIZES,    0,     0, &size));
+ size_t *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_WORK_ITEM_SIZES, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_char (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_short (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_int (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_long (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_float (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_vector_width_double (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_clock_frequency (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+address_bits (OpenCL::Device this)
+ PPCODE:
+ cl_bitfield value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_ADDRESS_BITS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_read_image_args (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_READ_IMAGE_ARGS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_write_image_args (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_WRITE_IMAGE_ARGS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_mem_alloc_size (OpenCL::Device this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image2d_max_width (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE2D_MAX_WIDTH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image2d_max_height (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE2D_MAX_HEIGHT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image3d_max_width (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE3D_MAX_WIDTH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image3d_max_height (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE3D_MAX_HEIGHT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image3d_max_depth (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE3D_MAX_DEPTH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+image_support (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_IMAGE_SUPPORT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_parameter_size (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_PARAMETER_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_samplers (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_SAMPLERS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+mem_base_addr_align (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+min_data_type_align_size (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+single_fp_config (OpenCL::Device this)
+ PPCODE:
+ cl_device_fp_config value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_SINGLE_FP_CONFIG, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+global_mem_cache_type (OpenCL::Device this)
+ PPCODE:
+ cl_device_mem_cache_type value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_GLOBAL_MEM_CACHE_TYPE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+global_mem_cacheline_size (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+global_mem_cache_size (OpenCL::Device this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+global_mem_size (OpenCL::Device this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_constant_buffer_size (OpenCL::Device this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+max_constant_args (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_MAX_CONSTANT_ARGS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+local_mem_type (OpenCL::Device this)
+ PPCODE:
+ cl_device_local_mem_type value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_LOCAL_MEM_TYPE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+local_mem_size (OpenCL::Device this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_LOCAL_MEM_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+error_correction_support (OpenCL::Device this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_ERROR_CORRECTION_SUPPORT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+void
+profiling_timer_resolution (OpenCL::Device this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PROFILING_TIMER_RESOLUTION, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+endian_little (OpenCL::Device this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_ENDIAN_LITTLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+void
+available (OpenCL::Device this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_AVAILABLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+void
+compiler_available (OpenCL::Device this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_COMPILER_AVAILABLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+void
+execution_capabilities (OpenCL::Device this)
+ PPCODE:
+ cl_device_exec_capabilities value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_EXECUTION_CAPABILITIES, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+properties (OpenCL::Device this)
+ PPCODE:
+ cl_command_queue_properties value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_QUEUE_PROPERTIES, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+platform (OpenCL::Device this)
+ PPCODE:
+ cl_platform_id value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PLATFORM, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Platform", value [i]));
+ }
+
+void
+name (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NAME,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NAME, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+vendor (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_VENDOR,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_VENDOR, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+driver_version (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DRIVER_VERSION,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DRIVER_VERSION, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+profile (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PROFILE,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PROFILE, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+version (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_VERSION,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_VERSION, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+extensions (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_EXTENSIONS,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_EXTENSIONS, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+preferred_vector_width_half (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PREFERRED_VECTOR_WIDTH_HALF, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_char (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_short (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_SHORT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_int (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_INT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_long (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_LONG, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_float (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_FLOAT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_double (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+native_vector_width_half (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_NATIVE_VECTOR_WIDTH_HALF, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+double_fp_config (OpenCL::Device this)
+ PPCODE:
+ cl_device_fp_config value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_DOUBLE_FP_CONFIG, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+half_fp_config (OpenCL::Device this)
+ PPCODE:
+ cl_device_fp_config value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_HALF_FP_CONFIG, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+host_unified_memory (OpenCL::Device this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+void
+parent_device_ext (OpenCL::Device this)
+ PPCODE:
+ cl_device_id value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PARENT_DEVICE_EXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+ }
+
+void
+partition_types_ext (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PARTITION_TYPES_EXT,    0,     0, &size));
+ cl_device_partition_property_ext *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PARTITION_TYPES_EXT, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+affinity_domains_ext (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_AFFINITY_DOMAINS_EXT,    0,     0, &size));
+ cl_device_partition_property_ext *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_AFFINITY_DOMAINS_EXT, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+reference_count_ext  (OpenCL::Device this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_REFERENCE_COUNT_EXT , sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+partition_style_ext (OpenCL::Device this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PARTITION_STYLE_EXT,    0,     0, &size));
+ cl_device_partition_property_ext *value = tmpbuf (size);
+ NEED_SUCCESS (GetDeviceInfo, (this, CL_DEVICE_PARTITION_STYLE_EXT, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:device
 
 MODULE = OpenCL		PACKAGE = OpenCL::Context
 
@@ -388,17 +1084,60 @@ program_with_source (OpenCL::Context this, SV *program)
   	NEED_SUCCESS_ARG (cl_program prog, CreateProgramWithSource, (this, 1, &ptr, &len2, &res));
         XPUSH_NEW_OBJ ("OpenCL::Program", prog);
 
+#BEGIN:context
+
+void
+reference_count (OpenCL::Context this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+devices (OpenCL::Context this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_DEVICES,    0,     0, &size));
+ cl_device_id *value = tmpbuf (size);
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_DEVICES, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ {
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+ }
+
+void
+properties (OpenCL::Context this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_PROPERTIES,    0,     0, &size));
+ cl_context_properties *value = tmpbuf (size);
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_PROPERTIES, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv ((UV)value [i])));
+
+void
+num_devices (OpenCL::Context this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetContextInfo, (this, CL_CONTEXT_NUM_DEVICES, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:context
+
 MODULE = OpenCL		PACKAGE = OpenCL::Queue
 
 void
 DESTROY (OpenCL::Queue this)
 	CODE:
         clReleaseCommandQueue (this);
-
-void
-info (OpenCL::Queue this, cl_command_queue_info name)
-	PPCODE:
-        INFO (CommandQueue)
 
 void
 enqueue_read_buffer (OpenCL::Queue this, OpenCL::Buffer mem, cl_bool blocking, size_t offset, size_t len, SV *data, ...)
@@ -635,6 +1374,56 @@ finish (OpenCL::Queue this)
 	CODE:
         NEED_SUCCESS (Finish, (this));
 
+void
+info (OpenCL::Queue this, cl_command_queue_info name)
+	PPCODE:
+        INFO (CommandQueue)
+
+#BEGIN:command_queue
+
+void
+context (OpenCL::Queue this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetCommandQueueInfo, (this, CL_QUEUE_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+void
+device (OpenCL::Queue this)
+ PPCODE:
+ cl_device_id value [1];
+ NEED_SUCCESS (GetCommandQueueInfo, (this, CL_QUEUE_DEVICE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+ }
+
+void
+reference_count (OpenCL::Queue this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetCommandQueueInfo, (this, CL_QUEUE_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+properties (OpenCL::Queue this)
+ PPCODE:
+ cl_command_queue_properties value [1];
+ NEED_SUCCESS (GetCommandQueueInfo, (this, CL_QUEUE_PROPERTIES, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+#END:command_queue
+
 MODULE = OpenCL		PACKAGE = OpenCL::Memory
 
 void
@@ -646,6 +1435,162 @@ void
 info (OpenCL::Memory this, cl_mem_info name)
 	PPCODE:
         INFO (MemObject)
+
+#BEGIN:mem
+
+void
+type (OpenCL::Memory this)
+ PPCODE:
+ cl_mem_object_type value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_TYPE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+flags (OpenCL::Memory this)
+ PPCODE:
+ cl_mem_flags value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_FLAGS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+size (OpenCL::Memory this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+host_ptr (OpenCL::Memory this)
+ PPCODE:
+ void * value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_HOST_PTR, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv ((IV)(intptr_t)value [i])));
+
+void
+map_count (OpenCL::Memory this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_MAP_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+reference_count (OpenCL::Memory this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+context (OpenCL::Memory this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+void
+associated_memobject (OpenCL::Memory this)
+ PPCODE:
+ cl_mem value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_ASSOCIATED_MEMOBJECT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainMemObject, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Memory", value [i]));
+ }
+
+void
+offset (OpenCL::Memory this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetMemObjectInfo, (this, CL_MEM_OFFSET, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:mem
+
+MODULE = OpenCL		PACKAGE = OpenCL::Image
+
+void
+image_info (OpenCL::Image this, cl_image_info name)
+	PPCODE:
+        INFO (Image)
+
+#BEGIN:image
+
+void
+element_size (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_ELEMENT_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+row_pitch (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_ROW_PITCH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+slice_pitch (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_SLICE_PITCH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+width (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_WIDTH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+height (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_HEIGHT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+depth (OpenCL::Image this)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetImageInfo, (this, CL_IMAGE_DEPTH, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:image
 
 MODULE = OpenCL		PACKAGE = OpenCL::Sampler
 
@@ -659,17 +1604,64 @@ info (OpenCL::Sampler this, cl_sampler_info name)
 	PPCODE:
         INFO (Sampler)
 
+#BEGIN:sampler
+
+void
+reference_count (OpenCL::Sampler this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetSamplerInfo, (this, CL_SAMPLER_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+context (OpenCL::Sampler this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetSamplerInfo, (this, CL_SAMPLER_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+void
+normalized_coords (OpenCL::Sampler this)
+ PPCODE:
+ cl_addressing_mode value [1];
+ NEED_SUCCESS (GetSamplerInfo, (this, CL_SAMPLER_NORMALIZED_COORDS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+addressing_mode (OpenCL::Sampler this)
+ PPCODE:
+ cl_filter_mode value [1];
+ NEED_SUCCESS (GetSamplerInfo, (this, CL_SAMPLER_ADDRESSING_MODE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+filter_mode (OpenCL::Sampler this)
+ PPCODE:
+ cl_bool value [1];
+ NEED_SUCCESS (GetSamplerInfo, (this, CL_SAMPLER_FILTER_MODE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (value [i] ? &PL_sv_yes : &PL_sv_no));
+
+#END:sampler
+
 MODULE = OpenCL		PACKAGE = OpenCL::Program
 
 void
 DESTROY (OpenCL::Program this)
 	CODE:
         clReleaseProgram (this);
-
-void
-info (OpenCL::Program this, cl_program_info name)
-	PPCODE:
-        INFO (Program)
 
 void
 build (OpenCL::Program this, OpenCL::Device device, SV *options = &PL_sv_undef)
@@ -688,11 +1680,125 @@ build_info (OpenCL::Program this, OpenCL::Device device, cl_program_build_info n
   	NEED_SUCCESS (GetProgramBuildInfo, (this, device, name, size, SvPVX (sv), 0));
         XPUSHs (sv);
 
+#BEGIN:program_build
+
+void
+build_status (OpenCL::Program this, OpenCL::Device device)
+ PPCODE:
+ cl_build_status value [1];
+ NEED_SUCCESS (GetProgramBuildInfo, (this, device, CL_PROGRAM_BUILD_STATUS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSViv (value [i])));
+
+void
+build_options (OpenCL::Program this, OpenCL::Device device)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetProgramBuildInfo, (this, device, CL_PROGRAM_BUILD_OPTIONS,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetProgramBuildInfo, (this, device, CL_PROGRAM_BUILD_OPTIONS, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+build_log (OpenCL::Program this, OpenCL::Device device)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetProgramBuildInfo, (this, device, CL_PROGRAM_BUILD_LOG,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetProgramBuildInfo, (this, device, CL_PROGRAM_BUILD_LOG, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+#END:program_build
+
 void
 kernel (OpenCL::Program program, SV *function)
 	PPCODE:
   	NEED_SUCCESS_ARG (cl_kernel kernel, CreateKernel, (program, SvPVbyte_nolen (function), &res));
         XPUSH_NEW_OBJ ("OpenCL::Kernel", kernel);
+
+void
+info (OpenCL::Program this, cl_program_info name)
+	PPCODE:
+        INFO (Program)
+
+#BEGIN:program
+
+void
+reference_count (OpenCL::Program this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+context (OpenCL::Program this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+void
+num_devices (OpenCL::Program this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_NUM_DEVICES, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+devices (OpenCL::Program this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_DEVICES,    0,     0, &size));
+ cl_device_id *value = tmpbuf (size);
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_DEVICES, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ {
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+ }
+
+void
+source (OpenCL::Program this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_SOURCE,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_SOURCE, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+binary_sizes (OpenCL::Program this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_BINARY_SIZES,    0,     0, &size));
+ size_t *value = tmpbuf (size);
+ NEED_SUCCESS (GetProgramInfo, (this, CL_PROGRAM_BINARY_SIZES, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:program
 
 MODULE = OpenCL		PACKAGE = OpenCL::Kernel
 
@@ -700,11 +1806,6 @@ void
 DESTROY (OpenCL::Kernel this)
 	CODE:
         clReleaseKernel (this);
-
-void
-info (OpenCL::Kernel this, cl_kernel_info name)
-	PPCODE:
-        INFO (Kernel)
 
 void
 set_char (OpenCL::Kernel this, cl_uint idx, cl_char value)
@@ -791,6 +1892,133 @@ set_event (OpenCL::Kernel this, cl_uint idx, OpenCL::Event value)
 	CODE:
         clSetKernelArg (this, idx, sizeof (value), &value);
 
+void
+info (OpenCL::Kernel this, cl_kernel_info name)
+	PPCODE:
+        INFO (Kernel)
+
+#BEGIN:kernel
+
+void
+function_name (OpenCL::Kernel this)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_FUNCTION_NAME,    0,     0, &size));
+ char *value = tmpbuf (size);
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_FUNCTION_NAME, size, value,     0));
+ int i, n = 1;
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVpv (value, 0)));
+
+void
+num_args (OpenCL::Kernel this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_NUM_ARGS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+reference_count (OpenCL::Kernel this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+context (OpenCL::Kernel this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+void
+program (OpenCL::Kernel this)
+ PPCODE:
+ cl_program value [1];
+ NEED_SUCCESS (GetKernelInfo, (this, CL_KERNEL_PROGRAM, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainProgram, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Program", value [i]));
+ }
+
+#END:kernel
+
+void
+work_group_info (OpenCL::Kernel this, OpenCL::Device device, cl_kernel_work_group_info name)
+	PPCODE:
+  	size_t size;
+  	NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, name, 0, 0, &size));
+        SV *sv = sv_2mortal (newSV (size));
+        SvUPGRADE (sv, SVt_PV);
+        SvPOK_only (sv);
+        SvCUR_set (sv, size);
+  	NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, name, size, SvPVX (sv), 0));
+        XPUSHs (sv);
+
+#BEGIN:kernel_work_group
+
+void
+work_group_size (OpenCL::Kernel this, OpenCL::Device device)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_WORK_GROUP_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+compile_work_group_size (OpenCL::Kernel this, OpenCL::Device device)
+ PPCODE:
+ size_t size;
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_COMPILE_WORK_GROUP_SIZE,    0,     0, &size));
+ size_t *value = tmpbuf (size);
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_COMPILE_WORK_GROUP_SIZE, size, value,     0));
+ int i, n = size / sizeof (value [0]);
+ EXTEND (SP, n);
+ for (i = 0; i < n; ++i)
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+local_mem_size (OpenCL::Kernel this, OpenCL::Device device)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_LOCAL_MEM_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+preferred_work_group_size_multiple (OpenCL::Kernel this, OpenCL::Device device)
+ PPCODE:
+ size_t value [1];
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+private_mem_size (OpenCL::Kernel this, OpenCL::Device device)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetKernelWorkGroupInfo, (this, device, CL_KERNEL_PRIVATE_MEM_SIZE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:kernel_work_group
+
 MODULE = OpenCL		PACKAGE = OpenCL::Event
 
 void
@@ -799,14 +2027,114 @@ DESTROY (OpenCL::Event this)
         clReleaseEvent (this);
 
 void
+wait (OpenCL::Event this)
+	CODE:
+	clWaitForEvents (1, &this);
+
+void
 info (OpenCL::Event this, cl_event_info name)
 	PPCODE:
         INFO (Event)
 
+#BEGIN:event
+
 void
-wait (OpenCL::Event this)
-	CODE:
-	clWaitForEvents (1, &this);
+command_queue (OpenCL::Event this)
+ PPCODE:
+ cl_command_queue value [1];
+ NEED_SUCCESS (GetEventInfo, (this, CL_EVENT_COMMAND_QUEUE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainCommandQueue, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Queue", value [i]));
+ }
+
+void
+command_type (OpenCL::Event this)
+ PPCODE:
+ cl_command_type value [1];
+ NEED_SUCCESS (GetEventInfo, (this, CL_EVENT_COMMAND_TYPE, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+reference_count (OpenCL::Event this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetEventInfo, (this, CL_EVENT_REFERENCE_COUNT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+command_execution_status (OpenCL::Event this)
+ PPCODE:
+ cl_uint value [1];
+ NEED_SUCCESS (GetEventInfo, (this, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+context (OpenCL::Event this)
+ PPCODE:
+ cl_context value [1];
+ NEED_SUCCESS (GetEventInfo, (this, CL_EVENT_CONTEXT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ {
+   NEED_SUCCESS (RetainContext, (value [i]));
+   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+ }
+
+#END:event
+
+void
+profiling_info (OpenCL::Event this, cl_profiling_info name)
+	PPCODE:
+        INFO (EventProfiling)
+
+#BEGIN:profiling
+
+void
+profiling_command_queued (OpenCL::Event this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetEventProfilingInfo, (this, CL_PROFILING_COMMAND_QUEUED, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+profiling_command_submit (OpenCL::Event this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetEventProfilingInfo, (this, CL_PROFILING_COMMAND_SUBMIT, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+profiling_command_start (OpenCL::Event this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetEventProfilingInfo, (this, CL_PROFILING_COMMAND_START, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+void
+profiling_command_end (OpenCL::Event this)
+ PPCODE:
+ cl_ulong value [1];
+ NEED_SUCCESS (GetEventProfilingInfo, (this, CL_PROFILING_COMMAND_END, sizeof (value), value, 0));
+ EXTEND (SP, 1);
+ const int i = 0;
+ PUSHs (sv_2mortal (newSVuv (value [i])));
+
+#END:profiling
 
 MODULE = OpenCL		PACKAGE = OpenCL::UserEvent
 

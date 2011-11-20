@@ -1,2 +1,0 @@
-</usr/include/CL/cl.h perl -ne 'print "const_iv($1)\n" if /^#define CL_(\S+)\s+0x[0-9a-fA-F]{4}/' >conststr.h
-

@@ -8,10 +8,11 @@ OpenCL.xs
 constiv.h
 errstr.h
 enumstr.h
+getinfo.txt		info about glGet*Info
 typemap
 t/00_load.t
 
-genconstiv
-genenumstr
+h_extract		used to extract stuff from CL header files, run manually
+gengetinfo		extracts glGet*Info stuff and patches OpenCL.{pm,xs}
 META.yml                                 Module YAML meta-data (added by MakeMaker)
 META.json                                Module JSON meta-data (added by MakeMaker)

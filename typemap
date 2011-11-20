@@ -11,15 +11,24 @@ cl_double		T_NV
 cl_float		T_NV
 cl_half			T_UV
 
+cl_bitfield		T_UV
+cl_device_fp_config	T_UV
+cl_device_exec_capabilities T_UV
+
 cl_platform_info	T_IV
 cl_device_type		T_IV
 cl_device_info		T_IV
+cl_device_mem_cache_type T_UV
+cl_device_local_mem_type T_UV
+cl_device_partition_property_ext T_UV
 cl_context_info		T_IV
 cl_command_queue_properties T_IV
 cl_command_queue_info	T_IV
 cl_mem_flags		T_IV
 cl_mem_info		T_IV
 cl_mem_object_type	T_IV
+cl_image_info		T_IV
+cl_profiling_info	T_IV
 cl_channel_order	T_UV
 cl_channel_type		T_UV
 cl_event_info		T_IV
@@ -28,7 +37,10 @@ cl_filter_mode		T_IV
 cl_sampler_info		T_IV
 cl_program_info		T_IV
 cl_program_build_info	T_IV
+cl_build_status		T_IV
 cl_kernel_info		T_IV
+cl_kernel_work_group_info T_IV
+cl_command_type		T_UV
 
 OpenCL::Platform	ptrobj
 OpenCL::Device		ptrobj
