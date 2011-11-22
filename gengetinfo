@@ -82,8 +82,9 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
    open my $fh, "<getinfo.txt"
       or die "getinfo.txt: $!";
 
-   my $XS;
    my $POD;
+   my @funcs;
+   my %alias;
 
    while (<$fh>) {
       chomp;
@@ -123,7 +124,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
       }
 
       my $dynamic;
-      my $nelem = "size / sizeof (value [0])";
+      my $nelem = "size / sizeof (*value)";
 
       if ($ctype eq "STRING_CLASS") {
          $ctype   = "VECTOR_CLASS<char>";
@@ -153,29 +154,34 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $perltype = "\$$perltype";
       }
 
-      $POD .= "\n=item $perltype = \$$real_class->$perl_name$extra_perl_args\n\nCalls C<clGet${cbase}Info> with C<$name> and returns the result(s).\n";
+      $POD .= "=item $perltype = \$$real_class->$perl_name$extra_perl_args\n\nCalls C<clGet${cbase}Info> with C<$name> and returns the result.\n\n";
 
-      $XS .= "void\n"
-           . "$perl_name (OpenCL::$classmap{$real_class} this$extra_xs_args)\n"
-           . " PPCODE:\n";
+      # XS1 contains the function before ALIAS, XS2 the function afterwards (the body)
+      # after we generate the bdoy we look for an identical body generated earlier
+      # and simply alias us to the earlier xs function, to save text size.
+      my ($XS1, $XS2);
+
+      $XS1 = "void\n"
+           . "XXXNAMEXXX (OpenCL::$classmap{$real_class} this$extra_xs_args)\n";
+      $XS2 = " PPCODE:\n";
 
       if ($dynamic) {
-        $XS .= " size_t size;\n"
-             . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, $name,    0,     0, &size));\n"
-             . " $type->[0] *value = tmpbuf (size);\n"
-             . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, $name, size, value,     0));\n";
+        $XS2 .= " size_t size;\n"
+              . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix,    0,     0, &size));\n"
+              . " $type->[0] *value = tmpbuf (size);\n"
+             . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix, size, value,     0));\n";
       } else {
-        $XS .= " $type->[0] value [1];\n"
-             . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, $name, sizeof (value), value, 0));\n";
+        $XS2 .= " $type->[0] value [1];\n"
+              . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix, sizeof (value), value, 0));\n";
       }
       
-      if ($array) {
-         $XS .= " int i, n = $nelem;\n"
-              . " EXTEND (SP, n);\n"
-              . " for (i = 0; i < n; ++i)\n";
+      if ($array && $nelem ne "1") {
+         $XS2 .= " int i, n = $nelem;\n"
+               . " EXTEND (SP, n);\n"
+               . " for (i = 0; i < n; ++i)\n";
       } else {
-         $XS .= " EXTEND (SP, 1);\n"
-              . " const int i = 0;\n"
+         $XS2 .= " EXTEND (SP, 1);\n"
+               . " const int i = 0;\n"
       }
 
       if ($type->[1] =~ /^OpenCL::(\S+)$/) {
@@ -183,20 +189,40 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $oclass = "MemObject"    if $oclass eq "Memory";
          $oclass = "CommandQueue" if $oclass eq "Queue";
 
-         $XS .= " {\n";
-         $XS .= "   NEED_SUCCESS (Retain$oclass, (value [i]));\n" unless $1 eq "Platform" || $1 eq "Device";
-         $XS .= "   PUSHs (NEW_MORTAL_OBJ (\"$type->[1]\", value [i]));\n";
-         $XS .= " }\n";
+         $XS2 .= " {\n";
+         $XS2 .= "   NEED_SUCCESS (Retain$oclass, (value [i]));\n" unless $1 eq "Platform" || $1 eq "Device";
+         $XS2 .= "   PUSHs (NEW_MORTAL_OBJ (\"$type->[1]\", value [i]));\n";
+         $XS2 .= " }\n";
       } else {
-         $XS .= " PUSHs (sv_2mortal ($type->[1]));\n";
+         $XS2 .= " PUSHs (sv_2mortal ($type->[1]));\n";
       }
 
-      $XS .= "\n";
+      $XS2 .= "\n";
+
+      if (my $alias = $alias{"$XS1$XS2"}) {
+         push @$alias, [$perl_name, $name];
+      } else {
+         push @funcs, [$XS1, (my $alias = [[$perl_name, $name]]), $XS2];
+         $alias{"$XS1$XS2"} = $alias;
+      }
    }
 
-   print $XS;
+   my $XS;
+
+   # this very dirty and ugly code is a very dirty and ugly code size optimisation.
+   for (@funcs) {
+      $_->[0] =~s /^XXXNAMEXXX/$_->[1][0][0]/m;
+
+      if (@{ $_->[1] } == 1) { # undo ALIAS
+         $_->[2] =~ s/\bix\b/$_->[1][0][1]/g;
+         $_->[1] = "";
+      } else {
+         $_->[1] = " ALIAS:\n" . join "", map " $_->[0] = $_->[1]\n", @{ $_->[1] };
+      }
+      $XS .= join "", @$_;
+   }
 
    patch "OpenCL.xs", "#BEGIN:$CLASS"               , "#END:$CLASS"               , $XS;
-   patch "OpenCL.pm", "=for gengetinfo begin $CLASS", "=for gengetinfo end $CLASS", "$POD\n";
+   patch "OpenCL.pm", "=for gengetinfo begin $CLASS", "=for gengetinfo end $CLASS", $POD;
 }
 

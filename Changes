@@ -1,11 +1,17 @@
 Revision history for Perl extension OpenCL.
 
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadBufferRect.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRect.html
-TODO: sometimes, glGet*Info returns strings with 0-bytes
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithBinary.html
 TODO: CL_IMAGE_FORMAT
-TODO: CL_PROGRAM_BINARIES
-TODO: combine sources for glGet* wrappers that are identical.
+TODO: add long example
+
+0.59 Tue Nov 22 11:44:32 CET 2011
+	- provide $program->binaries method.
+        - provide $queue->enqueue_read_buffer_rect method.
+        - provide $queue->enqueue_write_buffer_rect method.
+	- coalesce like-typed accessor methods into the same xs function and
+          multiple ALIASes - this reduces the OpenCL codesize from 162kb to
+          132kb on my system.
+        - minor doc improvements.
 
 0.55 Sun Nov 20 11:19:25 CET 2011
 	- semi-automatically generate query methods for almost all clGet*Info names.
