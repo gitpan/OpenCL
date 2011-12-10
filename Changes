@@ -1,8 +1,19 @@
 Revision history for Perl extension OpenCL.
 
 TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithBinary.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clUnloadCompiler.html # use 1.2 api?
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateKernelsInProgram.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetEventCallback.html, *pfn
 TODO: CL_IMAGE_FORMAT
 TODO: add long example
+TODO: ->build on multiple devices
+TODO: some convenience methods maybe?
+
+0.91 Sun Dec 11 00:05:02 CET 2011
+	- introduce $buffer_obj->sub_buffer_region method and a new class, OpenCL::BufferObj
+          for a subbuffer is a buffer without sub_buffer methods!
+        - support apple using a different location for opencl headers - untested.
+        - be more strict when passing event lists.
 
 0.59 Tue Nov 22 11:44:32 CET 2011
 	- provide $program->binaries method.
@@ -31,7 +42,7 @@ TODO: add long example
         - fix formatting.
 
 0.14 Thu Nov 17 04:04:23 CET 2011
-	- major incompatibilities due to API cleanup, the AI should now be
+	- major incompatibilities due to API cleanup, the API should now be
           mostly stable, if incomplete.
 	- fix prerequisites.
 	- replaced all _simple functions by "full" implementations, with some

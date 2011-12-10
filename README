@@ -624,15 +624,15 @@ DOCUMENTATION
         serEvent.html>
 
     $buf = $ctx->buffer ($flags, $len)
-        Creates a new OpenCL::Buffer object with the given flags and
-        octet-size.
+        Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object
+        with the given flags and octet-size.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateB
         uffer.html>
 
     $buf = $ctx->buffer_sv ($flags, $data)
-        Creates a new OpenCL::Buffer object and initialise it with the given
-        data values.
+        Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object and
+        initialise it with the given data values.
 
     $img = $ctx->image2d ($flags, $channel_order, $channel_type, $width,
     $height, $row_pitch = 0, $data = undef)
@@ -745,26 +745,18 @@ DOCUMENTATION
     $ev = $queue->enqueue_read_image ($src, $blocking, $x, $y, $z, $width,
     $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
-        ReadImage.html>
-
-    $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width,
-    $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
-        WriteImage.html>
-
-    $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y,
-    $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch,
-    $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
-        Yeah.
-
-        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyBufferRect.html>
 
     $ev = $queue->enqueue_copy_buffer_to_image ($src_buffer, $dst_image,
     $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth,
     $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
-        CopyBufferToImage.html>.
+        ReadImage.html>
+
+    $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width,
+    $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
+        WriteImage.html>
 
     $ev = $queue->enqueue_copy_image ($src_image, $dst_image, $src_x,
     $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth,
@@ -777,6 +769,14 @@ DOCUMENTATION
     $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyImageToBuffer.html>
+
+    $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y,
+    $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch,
+    $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
+        Yeah.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
+        CopyBufferToImage.html>.
 
     $ev = $queue->enqueue_task ($kernel, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
@@ -888,6 +888,24 @@ DOCUMENTATION
     $int = $mem->offset
         Calls "clGetMemObjectInfo" with "CL_MEM_OFFSET" and returns the
         result.
+
+  THE OpenCL::Buffer CLASS
+    This is a subclass of OpenCL::Memory, and the superclass of
+    OpenCL::BufferObj. Its purpose is simply to distinguish between buffers
+    and sub-buffers.
+
+  THE OpenCL::BufferObj CLASS
+    This is a subclass of OpenCL::Buffer and thus OpenCL::Memory. It exists
+    because one cna create sub buffers of OpenLC::BufferObj objects, but not
+    sub buffers from these sub buffers.
+
+    $subbuf = $buf_obj->sub_buffer_region ($flags, $origin, $size)
+        Creates an OpenCL::Buffer objects from this buffer and returns it.
+        The "buffer_create_type" is assumed to be
+        "CL_BUFFER_CREATE_TYPE_REGION".
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateS
+        ubBuffer.html>
 
   THE OpenCL::Image CLASS
     This is the superclass of all image objects - OpenCL::Image2D and

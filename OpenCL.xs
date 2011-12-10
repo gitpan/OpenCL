@@ -2,7 +2,11 @@
 #include "perl.h"
 #include "XSUB.h"
 
-#include <CL/opencl.h>
+#ifdef __APPLE__
+  #include <OpenCL/opencl.h>
+#else
+  #include <CL/opencl.h>
+#endif
 
 typedef cl_platform_id   OpenCL__Platform;
 typedef cl_device_id     OpenCL__Device;
@@ -10,6 +14,7 @@ typedef cl_context       OpenCL__Context;
 typedef cl_command_queue OpenCL__Queue;
 typedef cl_mem           OpenCL__Memory;
 typedef cl_mem           OpenCL__Buffer;
+typedef cl_mem           OpenCL__BufferObj;
 typedef cl_mem           OpenCL__Image;
 typedef cl_mem           OpenCL__Image2D;
 typedef cl_mem           OpenCL__Image3D;
@@ -139,6 +144,9 @@ img_row_pitch (cl_mem img)
 static cl_event *
 event_list (SV **items, int count)
 {
+  if (!count)
+    return 0;
+
   cl_event *list = tmpbuf (sizeof (cl_event) * count);
 
   while (count--)
@@ -562,7 +570,7 @@ buffer (OpenCL::Context this, cl_mem_flags flags, size_t len)
           croak ("clCreateBuffer: cannot use/copy host ptr when no data is given, use $context->buffer_sv instead?");
         
         NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (this, flags, len, 0, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
+        XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
 
 void
 buffer_sv (OpenCL::Context this, cl_mem_flags flags, SV *data)
@@ -574,7 +582,7 @@ buffer_sv (OpenCL::Context this, cl_mem_flags flags, SV *data)
           croak ("clCreateBuffer: have to specify use or copy host ptr when buffer data is given, use $context->buffer instead?");
         
         NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (this, flags, len, ptr, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
+        XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
 
 void
 image2d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t row_pitch = 0, SV *data = &PL_sv_undef)
@@ -787,6 +795,20 @@ enqueue_write_buffer_rect (OpenCL::Queue this, OpenCL::Memory buf, cl_bool block
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
 
 void
+enqueue_copy_buffer_rect (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t src_row_pitch, size_t src_slice_pitch, size_t dst_row_pitch, size_t dst_slice_pitch, ...)
+	PPCODE:
+	cl_event ev = 0;
+        const size_t src_origin[3] = { src_x, src_y, src_z };
+        const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
+        const size_t region[3] = { width, height, depth };
+        EVENT_LIST (16, items - 16);
+
+        NEED_SUCCESS (EnqueueCopyBufferRect, (this, src, dst, src_origin, dst_origin, region, src_row_pitch, src_slice_pitch, dst_row_pitch, dst_slice_pitch, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
+
+        if (ev)
+          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+
+void
 enqueue_read_image (OpenCL::Queue this, OpenCL::Image src, cl_bool blocking, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
 	PPCODE:
 	cl_event ev = 0;
@@ -838,33 +860,6 @@ enqueue_write_image (OpenCL::Queue this, OpenCL::Image dst, cl_bool blocking, si
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
 
 void
-enqueue_copy_buffer_rect (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t src_row_pitch, size_t src_slice_pitch, size_t dst_row_pitch, size_t dst_slice_pitch, ...)
-	PPCODE:
-	cl_event ev = 0;
-        const size_t src_origin[3] = { src_x, src_y, src_z };
-        const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
-        const size_t region[3] = { width, height, depth };
-        EVENT_LIST (16, items - 16);
-
-        NEED_SUCCESS (EnqueueCopyBufferRect, (this, src, dst, src_origin, dst_origin, region, src_row_pitch, src_slice_pitch, dst_row_pitch, dst_slice_pitch, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
-
-        if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-
-void
-enqueue_copy_buffer_to_image (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
-	PPCODE:
-	cl_event ev = 0;
-        const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
-        const size_t region[3] = { width, height, depth };
-        EVENT_LIST (10, items - 10);
-
-        NEED_SUCCESS (EnqueueCopyBufferToImage, (this, src, dst, src_offset, dst_origin, region, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
-
-        if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
-
-void
 enqueue_copy_image (OpenCL::Queue this, OpenCL::Image src, OpenCL::Image dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
 	PPCODE:
 	cl_event ev = 0;
@@ -887,6 +882,19 @@ enqueue_copy_image_to_buffer (OpenCL::Queue this, OpenCL::Image src, OpenCL::Buf
         EVENT_LIST (10, items - 10);
 
         NEED_SUCCESS (EnqueueCopyImageToBuffer, (this, src, dst, src_origin, region, dst_offset, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
+
+        if (ev)
+          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+
+void
+enqueue_copy_buffer_to_image (OpenCL::Queue this, OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+	PPCODE:
+	cl_event ev = 0;
+        const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
+        const size_t region[3] = { width, height, depth };
+        EVENT_LIST (10, items - 10);
+
+        NEED_SUCCESS (EnqueueCopyBufferToImage, (this, src, dst, src_offset, dst_origin, region, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
@@ -1122,6 +1130,19 @@ associated_memobject (OpenCL::Memory this)
  }
 
 #END:mem
+
+MODULE = OpenCL		PACKAGE = OpenCL::BufferObj
+
+void
+sub_buffer_region (OpenCL::BufferObj this, cl_mem_flags flags, size_t origin, size_t size)
+	PPCODE:
+        if (flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR))
+          croak ("clCreateSubBuffer: cannot use/copy/alloc host ptr, doesn't make sense, check your flags!");
+
+        cl_buffer_region crdata = { origin, size };
+        
+        NEED_SUCCESS_ARG (cl_mem mem, CreateSubBuffer, (this, flags, CL_BUFFER_CREATE_TYPE_REGION, &crdata, &res));
+        XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
 
 MODULE = OpenCL		PACKAGE = OpenCL::Image
 

@@ -670,23 +670,27 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateUserEvent.ht
 
 =item $buf = $ctx->buffer ($flags, $len)
 
-Creates a new OpenCL::Buffer object with the given flags and octet-size.
+Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object with the
+given flags and octet-size.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateBuffer.html>
 
 =item $buf = $ctx->buffer_sv ($flags, $data)
 
-Creates a new OpenCL::Buffer object and initialise it with the given data values.
+Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object and
+initialise it with the given data values.
 
 =item $img = $ctx->image2d ($flags, $channel_order, $channel_type, $width, $height, $row_pitch = 0, $data = undef)
 
-Creates a new OpenCL::Image2D object and optionally initialises it with the given data values.
+Creates a new OpenCL::Image2D object and optionally initialises it with
+the given data values.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateImage2D.html>
 
 =item $img = $ctx->image3d ($flags, $channel_order, $channel_type, $width, $height, $depth, $row_pitch = 0, $slice_pitch = 0, $data = undef)
 
-Creates a new OpenCL::Image3D object and optionally initialises it with the given data values.
+Creates a new OpenCL::Image3D object and optionally initialises it with
+the given data values.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateImage3D.html>
 
@@ -783,21 +787,15 @@ http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRe
 
 =item $ev = $queue->enqueue_read_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
 
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferRect.html>
+
+=item $ev = $queue->enqueue_copy_buffer_to_image ($src_buffer, $dst_image, $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
+
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadImage.html>
 
 =item $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteImage.html>
-
-=item $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch, $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
-
-Yeah.
-
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferRect.html>
-
-=item $ev = $queue->enqueue_copy_buffer_to_image ($src_buffer, $dst_image, $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
-
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferToImage.html>.
 
 =item $ev = $queue->enqueue_copy_image ($src_image, $dst_image, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
 
@@ -806,6 +804,12 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyImage.h
 =item $ev = $queue->enqueue_copy_image_to_buffer ($src_image, $dst_image, $src_x, $src_y, $src_z, $width, $height, $depth, $dst_offset, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyImageToBuffer.html>
+
+=item $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch, $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
+
+Yeah.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferToImage.html>.
 
 =item $ev = $queue->enqueue_task ($kernel, $wait_events...)
 
@@ -929,6 +933,29 @@ Calls C<clGetMemObjectInfo> with C<CL_MEM_ASSOCIATED_MEMOBJECT> and returns the 
 Calls C<clGetMemObjectInfo> with C<CL_MEM_OFFSET> and returns the result.
 
 =for gengetinfo end mem
+
+=back
+
+=head2 THE OpenCL::Buffer CLASS
+
+This is a subclass of OpenCL::Memory, and the superclass of
+OpenCL::BufferObj. Its purpose is simply to distinguish between buffers
+and sub-buffers.
+
+=head2 THE OpenCL::BufferObj CLASS
+
+This is a subclass of OpenCL::Buffer and thus OpenCL::Memory. It exists
+because one cna create sub buffers of OpenLC::BufferObj objects, but not
+sub buffers from these sub buffers.
+
+=over 4
+
+=item $subbuf = $buf_obj->sub_buffer_region ($flags, $origin, $size)
+
+Creates an OpenCL::Buffer objects from this buffer and returns it. The
+C<buffer_create_type> is assumed to be C<CL_BUFFER_CREATE_TYPE_REGION>.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateSubBuffer.html>
 
 =back
 
@@ -1277,18 +1304,20 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.59';
+   our $VERSION = '0.91';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);
 
-   @OpenCL::Buffer::ISA    =
-   @OpenCL::Image::ISA     = OpenCL::Memory::;
+   @OpenCL::Buffer::ISA =
+   @OpenCL::Image::ISA      = OpenCL::Memory::;
 
-   @OpenCL::Image2D::ISA   =
-   @OpenCL::Image3D::ISA   = OpenCL::Image::;
+   @OpenCL::BufferObj::ISA  = OpenCL::Buffer::;
 
-   @OpenCL::UserEvent::ISA = OpenCL::Event::;
+   @OpenCL::Image2D::ISA    =
+   @OpenCL::Image3D::ISA    = OpenCL::Image::;
+
+   @OpenCL::UserEvent::ISA  = OpenCL::Event::;
 }
 
 1;

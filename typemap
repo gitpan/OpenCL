@@ -48,6 +48,7 @@ OpenCL::Context		ptrobj
 OpenCL::Queue		ptrobj
 OpenCL::Memory		ptrobj
 OpenCL::Buffer		ptrobj
+OpenCL::BufferObj	ptrobj
 OpenCL::Image		ptrobj
 OpenCL::Image2D		ptrobj
 OpenCL::Image3D		ptrobj
