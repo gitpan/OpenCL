@@ -9,6 +9,11 @@ TODO: add long example
 TODO: ->build on multiple devices
 TODO: some convenience methods maybe?
 
+0.92 Mon Apr 16 08:39:21 CEST 2012
+	- work around some bugs in amd's opencl implementation (INVALID_HOST_PTR
+          when value deosn't matter).
+	- minor documentation fix (patch by Maik Hentsche).
+
 0.91 Sun Dec 11 00:05:02 CET 2011
 	- introduce $buffer_obj->sub_buffer_region method and a new class, OpenCL::BufferObj
           for a subbuffer is a buffer without sub_buffer methods!

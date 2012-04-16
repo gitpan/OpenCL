@@ -576,11 +576,9 @@ void
 buffer_sv (OpenCL::Context this, cl_mem_flags flags, SV *data)
 	PPCODE:
 	STRLEN len;
-        char *ptr = SvPVbyte (data, len);
-        
+        char *ptr = SvOK (data) ? SvPVbyte (data, len) : 0;
         if (!(flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR)))
           croak ("clCreateBuffer: have to specify use or copy host ptr when buffer data is given, use $context->buffer instead?");
-        
         NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (this, flags, len, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
 
@@ -588,7 +586,7 @@ void
 image2d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t row_pitch = 0, SV *data = &PL_sv_undef)
 	PPCODE:
 	STRLEN len;
-        char *ptr = SvPVbyte (data, len);
+        char *ptr = SvOK (data) ? SvPVbyte (data, len) : 0;
         const cl_image_format format = { channel_order, channel_type };
   	NEED_SUCCESS_ARG (cl_mem mem, CreateImage2D, (this, flags, &format, width, height, row_pitch, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
@@ -597,7 +595,7 @@ void
 image3d (OpenCL::Context this, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t depth, size_t row_pitch = 0, size_t slice_pitch = 0, SV *data = &PL_sv_undef)
 	PPCODE:
 	STRLEN len;
-        char *ptr = SvPVbyte (data, len);
+        char *ptr = SvOK (data) ? SvPVbyte (data, len) : 0;
         const cl_image_format format = { channel_order, channel_type };
   	NEED_SUCCESS_ARG (cl_mem mem, CreateImage3D, (this, flags, &format, width, height, depth, row_pitch, slice_pitch, ptr, &res));
         XPUSH_NEW_OBJ ("OpenCL::Image3D", mem);

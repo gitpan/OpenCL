@@ -107,7 +107,7 @@ system.
       printf "extensions: %s\n", $platform->extensions;
       for my $device ($platform->devices) {
          printf "+ device: %s\n", $device->name;
-         my $ctx = $device->context;
+         my $ctx = $platform->context (undef, [$device]);
          # do stuff
       }
    }
@@ -151,8 +151,8 @@ then asynchronously.
 functions.
 
    my $src = '
-      __kernel void
-      squareit (__global float *input, __global float *output)
+      kernel void
+      squareit (global float *input, global float *output)
       {
         $id = get_global_id (0);
         output [id] = input [id] * input [id];
@@ -288,9 +288,9 @@ Comverts an error value into a human readable string.
 
 =item $str = OpenCL::enum2str $enum
 
-Converts most enum values (inof parameter names, image format constants,
+Converts most enum values (of parameter names, image format constants,
 object types, addressing and filter modes, command types etc.) into a
-human readbale string. When confronted with some random integer it can be
+human readable string. When confronted with some random integer it can be
 very helpful to pass it through this function to maybe get some readable
 string out of it.
 
@@ -328,7 +328,7 @@ Tries to create a context. Never worked for me, and you need devices explicitly 
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateContextFromType.html>
 
-=item $ctx = $device->context ($properties = undef, @$devices, $notify = undef)
+=item $ctx = $platform->context ($properties = undef, @$devices, $notify = undef)
 
 Create a new OpenCL::Context object using the given device object(s)- a
 CL_CONTEXT_PLATFORM property is supplied automatically.
@@ -1304,7 +1304,7 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.91';
+   our $VERSION = '0.92';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);
