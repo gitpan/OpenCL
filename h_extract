@@ -4,24 +4,39 @@
 # be in CL/
 
 # constants
-cat CL/cl.h CL/cl_ext.h |
-   perl -ne 'print "const_iv($1)\n" if /^#define CL_(\S+)/' >constiv.h
+cat CL/cl.h CL/cl_ext.h CL/cl_gl.h CL/cl_gl_ext.h CL/cl_d3d10.h |
+   perl -ne 'print "#ifdef CL_$1\nconst_iv($1)\n#endif\n" if /^#define CL_(\S+)/' >constiv.h
 
 # constants that look like enum values
-<CL/cl.h perl -ne 'print "const_iv($1)\n" if /^#define CL_(\S+)\s+0x[0-9a-fA-F]{4}/' >enumstr.h
+cat CL/cl.h CL/cl_ext.h CL/cl_gl.h CL/cl_gl_ext.h CL/cl_d3d10.h |
+   perl -ne 'print "#ifdef CL_$1\nconst_iv($1)\n#endif\n" if /^#define CL_(\S+)\s+0x[0-9a-fA-F]{4}/' >enumstr.h
 
 # *glGet*Info
-<CL/cl.hpp perl -ne 'print "$1\n" if /^\s*F\((.*)\)\s*\\?\s*$/' >getinfo.txt
-# DEVICE_DOUBLE_FP_CONFIG
-# DEVICE_HALF_FP_CONFIG
-# PLATFORM_ICD_SUFFIX_KHR
-# PLATFORM_NOT_FOUND_KHR
-# DEVICE_COMPUTE_CAPABILITY_MAJOR_NV
-# DEVICE_COMPUTE_CAPABILITY_MINOR_NV
-# DEVICE_REGISTERS_PER_BLOCK_NV
-# DEVICE_WARP_SIZE_NV
-# DEVICE_GPU_OVERLAP_NV
-# DEVICE_KERNEL_EXEC_TIMEOUT_NV
-# DEVICE_INTEGRATED_MEMORY_NV
-# DEVICE_PROFILING_TIMER_OFFSET_AMD
+(
+   <CL/cl.hpp perl -ne 'print "$1\n" if /^\s*F\((.*)\)\s*\\?\s*$/'
+   # DEVICE_DOUBLE_FP_CONFIG
+   # DEVICE_HALF_FP_CONFIG
+   # PLATFORM_ICD_SUFFIX_KHR
+   # PLATFORM_NOT_FOUND_KHR
+   # DEVICE_COMPUTE_CAPABILITY_MAJOR_NV
+   # DEVICE_COMPUTE_CAPABILITY_MINOR_NV
+   # DEVICE_REGISTERS_PER_BLOCK_NV
+   # DEVICE_WARP_SIZE_NV
+   # DEVICE_GPU_OVERLAP_NV
+   # DEVICE_KERNEL_EXEC_TIMEOUT_NV
+   # DEVICE_INTEGRATED_MEMORY_NV
+   # DEVICE_PROFILING_TIMER_OFFSET_AMD
+
+   cat <<EOF
+cl_gl_texture_info, CL_GL_TEXTURE_TARGET, cl_GLenum
+cl_gl_texture_info, CL_GL_MIPMAP_LEVEL, cl_GLint
+EOF
+) >getinfo.txt
+
+# error codes
+(
+   echo "const_iv(SUCCESS)"
+   cat CL/cl.h CL/cl_ext.h CL/cl_gl.h CL/cl_gl_ext.h CL/cl_d3d10.h |
+      perl -ne 'print "#ifdef CL_$1\nconst_iv($1)\n#endif\n" if !/#define CL_BUILD_(?:NONE|ERROR|IN_PROGRESS)/ && /^#define CL_(\S+)\s+-\d+\s*$/'
+) >errstr.h
 

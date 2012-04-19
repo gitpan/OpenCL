@@ -213,6 +213,101 @@ showing off event objects and wait lists.
    # wait for the last event to complete
    $ev->wait;
 
+=head2 Use the OpenGL module to share a texture between OpenCL and OpenGL and draw some julia
+set tunnel effect.
+
+This is quite a long example to get you going.
+
+   use OpenGL ":all";
+   use OpenCL;
+
+   # open a window and create a gl texture
+   OpenGL::glpOpenWindow width => 256, height => 256;
+   my $texid = glGenTextures_p 1;
+   glBindTexture GL_TEXTURE_2D, $texid;
+   glTexImage2D_c GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0;
+
+   # find and use the first opencl device that let's us get a shared opengl context
+   my $platform;
+   my $dev;
+   my $ctx;
+
+   for (OpenCL::platforms) {
+      $platform = $_;
+      for ($platform->devices) {
+         $dev = $_;
+         $ctx = $platform->context ([OpenCL::GLX_DISPLAY_KHR, undef, OpenCL::GL_CONTEXT_KHR, undef], [$dev])
+            and last;
+      }
+   }
+
+   $ctx
+      or die "cannot find suitable OpenCL device\n";
+
+   my $queue = $ctx->queue ($dev);
+
+   # now attach an opencl image2d object to the opengl texture
+   my $tex = $ctx->gl_texture2d (OpenCL::MEM_WRITE_ONLY, GL_TEXTURE_2D, 0, $texid);
+
+   # now the boring opencl code
+   my $src = <<EOF;
+   kernel void
+   juliatunnel (write_only image2d_t img, float time)
+   {
+     float2 p = (float2)(get_global_id (0), get_global_id (1)) / 256.f * 2.f - 1.f;
+
+     float2 m = (float2)(1.f, p.y) / fabs (p.x);
+     m.x = fabs (fmod (m.x + time * 0.05f, 4.f)) - 2.f;
+
+     float2 z = m;
+     float2 c = (float2)(sin (time * 0.05005), cos (time * 0.06001));
+
+     for (int i = 0; i < 25 && dot (z, z) < 4.f; ++i)
+       z = (float2)(z.x * z.x - z.y * z.y, 2.f * z.x * z.y) + c;
+
+     float3 colour = (float3)(z.x, z.y, z.x * z.y);
+     write_imagef (img, (int2)(get_global_id (0), get_global_id (1)), (float4)(colour * p.x * p.x, 1.));
+   }
+   EOF
+   my $prog = $ctx->program_with_source ($src);
+   eval { $prog->build ($dev); 1 }
+      or die $prog->build_log ($dev);
+
+   my $kernel = $prog->kernel ("juliatunnel");
+
+   # program compiled, kernel ready, now draw and loop
+
+   for (my $time; ; ++$time) {
+      # acquire objects from opengl
+      $queue->enqueue_acquire_gl_objects ([$tex]);
+
+      # configure and run our kernel
+      $kernel->set_image2d (0, $tex);
+      $kernel->set_float   (1, $time);
+      $queue->enqueue_nd_range_kernel ($kernel, undef, [256, 256], undef);
+
+      # release objects to opengl again
+      $queue->enqueue_release_gl_objects ([$tex]);
+
+      # wait
+      $queue->flush;
+
+      # now draw the texture, the defaults should be all right
+      glTexParameterf GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST;
+
+      glEnable GL_TEXTURE_2D;
+      glBegin GL_QUADS;
+         glTexCoord2f 0, 1; glVertex3i -1, -1, -1;
+         glTexCoord2f 0, 0; glVertex3i  1, -1, -1;
+         glTexCoord2f 1, 0; glVertex3i  1,  1, -1;
+         glTexCoord2f 1, 1; glVertex3i -1,  1, -1;
+      glEnd;
+
+      glXSwapBuffers;
+
+      select undef, undef, undef, 1/60;
+   }
+
 =head1 DOCUMENTATION
 
 =head2 BASIC CONVENTIONS
@@ -272,6 +367,21 @@ format equivalents:
    float     NV     float     f
    half      IV     ushort    S
    double    NV     double    d
+
+=head2 GLX SUPPORT
+
+Due to the sad state that OpenGL support is in in Perl (mostly the OpenGL
+module, which has little to no documentation and has little to no support
+for glX), this module, as a special extension, treats context creation
+properties C<OpenCL::GLX_DISPLAY_KHR> and C<OpenCL::GL_CONTEXT_KHR>
+specially: If either or both of these are C<undef>, then the OpenCL
+module tries to dynamically resolve C<glXGetCurrentDisplay> and
+C<glXGetCurrentContext>, call these functions and use their return values
+instead.
+
+For this to work, the OpenGL library must be loaded, a GLX context must
+have been created and be made current, and C<dlsym> must be available and
+capable of finding the function via C<RTLD_DEFAULT>.
 
 =head2 THE OpenCL PACKAGE
 
@@ -694,6 +804,34 @@ the given data values.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateImage3D.html>
 
+=item $buffer = $ctx->gl_buffer ($flags, $bufobj)
+
+Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object that refers to the given
+OpenGL buffer object.
+
+http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLBuffer.html
+
+=item $ctx->gl_texture2d ($flags, $target, $miplevel, $texture)
+
+Creates a new OpenCL::Image2D object that refers to the given OpenGL
+2D texture object.
+
+http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLTexture2D.html
+
+=item $ctx->gl_texture3d ($flags, $target, $miplevel, $texture)
+
+Creates a new OpenCL::Image3D object that refers to the given OpenGL
+3D texture object.
+
+http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLTexture3D.html
+
+=item $ctx->gl_renderbuffer ($flags, $renderbuffer)
+
+Creates a new OpenCL::Image2D object that refers to the given OpenGL
+render buffer.
+
+http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLRenderbuffer.html
+
 =item @formats = $ctx->supported_image_formats ($flags, $image_type)
 
 Returns a list of matching image formats - each format is an arrayref with
@@ -833,9 +971,23 @@ elements as @$global_work_size.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueNDRangeKernel.html>
 
-=item $ev = $queue->enqueue_marker
+=item $ev = $queue->enqueue_marker ($wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMarker.html>
+
+=item $ev = $queue->enqueue_acquire_gl_objects ([object, ...], $wait_events...)
+
+Enqueues a list (an array-ref of OpenCL::Memory objects) to be acquired
+for subsequent OpenCL usage.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueAcquireGLObjects.html>
+
+=item $ev = $queue->enqueue_release_gl_objects ([object, ...], $wait_events...)
+
+Enqueues a list (an array-ref of OpenCL::Memory objects) to be released
+for subsequent OpenGL usage.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReleaseGLObjects.html>
 
 =item $ev = $queue->enqueue_wait_for_events ($wait_events...)
 
@@ -934,6 +1086,13 @@ Calls C<clGetMemObjectInfo> with C<CL_MEM_OFFSET> and returns the result.
 
 =for gengetinfo end mem
 
+=item ($type, $name) = $mem->gl_object_info
+
+Returns the OpenGL object type (e.g. OpenCL::GL_OBJECT_TEXTURE2D) and the
+object "name" (e.g. the texture name) used to create this memory object.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetGLObjectInfo.html>
+
 =back
 
 =head2 THE OpenCL::Buffer CLASS
@@ -1001,6 +1160,18 @@ Calls C<clGetImageInfo> with C<CL_IMAGE_HEIGHT> and returns the result.
 Calls C<clGetImageInfo> with C<CL_IMAGE_DEPTH> and returns the result.
 
 =for gengetinfo end image
+
+=for gengetinfo begin gl_texture
+
+=item $GLenum = $gl_texture->target
+
+Calls C<clGetGLTextureInfo> with C<CL_GL_TEXTURE_TARGET> and returns the result.
+
+=item $GLint = $gl_texture->gl_mipmap_level
+
+Calls C<clGetGLTextureInfo> with C<CL_GL_MIPMAP_LEVEL> and returns the result.
+
+=for gengetinfo end gl_texture
 
 =back
 
@@ -1304,7 +1475,7 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.92';
+   our $VERSION = '0.95';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);

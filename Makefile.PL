@@ -9,6 +9,7 @@ WriteMakefile(
     PREREQ_PM => {
        common::sense => 0,
     },
+    DEFINE => $DEFINE,
     NAME => "OpenCL",
     VERSION_FROM => "OpenCL.pm",
     LIBS => ["-lOpenCL"],

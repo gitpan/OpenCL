@@ -9,6 +9,15 @@ TODO: add long example
 TODO: ->build on multiple devices
 TODO: some convenience methods maybe?
 
+0.95 Thu Apr 19 21:25:32 CEST 2012
+	- add lengthy opengl sharing example.
+	- support property lists in CreateContext* calls.
+        - support some opengl sharing extensions
+          (gl_buffer, gl_texture[23]d, gl_renderbuffer).
+        - support some cl_khr_gl_sharing extensions.
+        - add some extension constants (cl_gl.h cl_ext.h, cl_d3d10.h).
+        - auto-generate error codes (and include gl+d3d extensions).
+
 0.92 Mon Apr 16 08:39:21 CEST 2012
 	- work around some bugs in amd's opencl implementation (INVALID_HOST_PTR
           when value deosn't matter).

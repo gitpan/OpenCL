@@ -14,6 +14,7 @@ my %classmap = qw(
    profiling         Event
    mem               Memory
    image             Image
+   gl_texture	     Image
    sampler           Sampler
    program           Program
    program_build     Program
@@ -78,7 +79,7 @@ sub patch($$$$) {
    rename "$file~", $file;
 }
 
-for my $CLASS (qw(platform device context command_queue mem image sampler program program_build kernel kernel_work_group event profiling)) {
+for my $CLASS (qw(platform device context command_queue mem image sampler program program_build kernel kernel_work_group event profiling gl_texture)) {
    open my $fh, "<getinfo.txt"
       or die "getinfo.txt: $!";
 
@@ -98,6 +99,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
 
       my $cbase = $class;
       $cbase =~ s/_(.)/\U$1/g;
+      $cbase =~ s/Gl(?=[A-Z])/GL/g;
       $cbase =~ s/^cl//;
       $cbase =~ s/Info$//;
       $cbase = "MemObject"      if $cbase eq "Mem";
@@ -162,17 +164,17 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
       my ($XS1, $XS2);
 
       $XS1 = "void\n"
-           . "XXXNAMEXXX (OpenCL::$classmap{$real_class} this$extra_xs_args)\n";
+           . "XXXNAMEXXX (OpenCL::$classmap{$real_class} self$extra_xs_args)\n";
       $XS2 = " PPCODE:\n";
 
       if ($dynamic) {
         $XS2 .= " size_t size;\n"
-              . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix,    0,     0, &size));\n"
+              . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix,    0,     0, &size));\n"
               . " $type->[0] *value = tmpbuf (size);\n"
-             . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix, size, value,     0));\n";
+             . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix, size, value,     0));\n";
       } else {
         $XS2 .= " $type->[0] value [1];\n"
-              . " NEED_SUCCESS (Get${cbase}Info, (this$extra_args, ix, sizeof (value), value, 0));\n";
+              . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix, sizeof (value), value, 0));\n";
       }
       
       if ($array && $nelem ne "1") {
@@ -221,6 +223,8 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
       }
       $XS .= join "", @$_;
    }
+
+   warn "patching class $CLASS\n";
 
    patch "OpenCL.xs", "#BEGIN:$CLASS"               , "#END:$CLASS"               , $XS;
    patch "OpenCL.pm", "=for gengetinfo begin $CLASS", "=for gengetinfo end $CLASS", $POD;

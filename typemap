@@ -42,6 +42,17 @@ cl_kernel_info		T_IV
 cl_kernel_work_group_info T_IV
 cl_command_type		T_UV
 
+cl_context_properties * context_properties
+
+cl_GLenum		T_UV
+cl_GLint		T_IV
+cl_GLuint		T_UV
+
+cl_gl_object_type	T_UV
+cl_gl_texture_info	T_UV
+cl_gl_platform_info	T_UV
+cl_gl_context_info	T_UV
+
 OpenCL::Platform	ptrobj
 OpenCL::Device		ptrobj
 OpenCL::Context		ptrobj
@@ -70,6 +81,9 @@ INPUT
 future
 	if (SvOK ($arg))
 	  croak (\"$pname argument '$var' is reserved for future extensions, it must be missing or undef in this implementation, in call\");
+
+context_properties
+	$var = SvCONTEXTPROPERTIES (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, 0, 0)
 
 ptrobj
 	$var = ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")

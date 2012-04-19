@@ -127,3 +127,5 @@ cl_device_info, CL_DEVICE_PARTITION_TYPES_EXT, VECTOR_CLASS<cl_device_partition_
 cl_device_info, CL_DEVICE_AFFINITY_DOMAINS_EXT, VECTOR_CLASS<cl_device_partition_property_ext>
 cl_device_info, CL_DEVICE_REFERENCE_COUNT_EXT , cl_uint
 cl_device_info, CL_DEVICE_PARTITION_STYLE_EXT, VECTOR_CLASS<cl_device_partition_property_ext>
+cl_gl_texture_info, CL_GL_TEXTURE_TARGET, cl_GLenum
+cl_gl_texture_info, CL_GL_MIPMAP_LEVEL, cl_GLint
