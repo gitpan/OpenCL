@@ -151,7 +151,7 @@ functions.
        my $prog = $ctx->program_with_source ($src);
 
        # build croaks on compile errors, so catch it and print the compile errors
-       eval { $prog->build ($dev); 1 }
+       eval { $prog->build ($dev, "-cl-fast-relaxed-math"); 1 }
           or die $prog->build_log;
 
        my $kernel = $prog->kernel ("squareit");
@@ -275,7 +275,7 @@ set tunnel effect.
           $queue->enqueue_release_gl_objects ([$tex]);
 
           # wait
-          $queue->flush;
+          $queue->finish;
 
           # now draw the texture, the defaults should be all right
           glTexParameterf GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST;
@@ -1274,12 +1274,13 @@ DOCUMENTATION
 
         TYPE is one of "char", "uchar", "short", "ushort", "int", "uint",
         "long", "ulong", "half", "float", "double", "memory", "buffer",
-        "image2d", "image3d", "sampler" or "event".
+        "image2d", "image3d", "sampler", "local" or "event".
 
         Chars and integers (including the half type) are specified as
         integers, float and double as floating point values,
         memory/buffer/image2d/image3d must be an object of that type or
-        "undef", and sampler and event must be objects of that type.
+        "undef", local-memory arguments are set by specifying the size, and
+        sampler and event must be objects of that type.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetKern
         elArg.html>

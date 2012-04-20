@@ -857,7 +857,7 @@ enqueue_write_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, 
         char *ptr = SvPVbyte (data, len);
         EVENT_LIST (5, items - 5);
 
-        NEED_SUCCESS (EnqueueReadBuffer, (self, mem, blocking, offset, len, ptr, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
+        NEED_SUCCESS (EnqueueWriteBuffer, (self, mem, blocking, offset, len, ptr, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
           XPUSH_NEW_OBJ ("OpenCL::Event", ev);
@@ -1690,6 +1690,11 @@ void
 set_sampler (OpenCL::Kernel self, cl_uint idx, OpenCL::Sampler value)
 	CODE:
         clSetKernelArg (self, idx, sizeof (value), &value);
+
+void
+set_local (OpenCL::Kernel self, cl_uint idx, size_t size)
+	CODE:
+        clSetKernelArg (self, idx, size, 0);
 
 void
 set_event (OpenCL::Kernel self, cl_uint idx, OpenCL::Event value)

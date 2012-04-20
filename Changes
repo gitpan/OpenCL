@@ -9,6 +9,11 @@ TODO: add long example
 TODO: ->build on multiple devices
 TODO: some convenience methods maybe?
 
+0.96 Fri Apr 20 22:23:58 CEST 2012
+        - ->enqueue_write_buffer actually called enqueue_read_buffer. d'oh.
+	- new $kernel->set_local function, to size local buffer arguments.
+	- use finish, not flush, in examples.
+
 0.95 Thu Apr 19 21:25:32 CEST 2012
 	- add lengthy opengl sharing example.
 	- support property lists in CreateContext* calls.

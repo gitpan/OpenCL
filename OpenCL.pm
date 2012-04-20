@@ -162,7 +162,7 @@ functions.
    my $prog = $ctx->program_with_source ($src);
 
    # build croaks on compile errors, so catch it and print the compile errors
-   eval { $prog->build ($dev); 1 }
+   eval { $prog->build ($dev, "-cl-fast-relaxed-math"); 1 }
       or die $prog->build_log;
 
    my $kernel = $prog->kernel ("squareit");
@@ -290,7 +290,7 @@ This is quite a long example to get you going.
       $queue->enqueue_release_gl_objects ([$tex]);
 
       # wait
-      $queue->flush;
+      $queue->finish;
 
       # now draw the texture, the defaults should be all right
       glTexParameterf GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST;
@@ -1371,12 +1371,13 @@ This is a family of methods to set the kernel argument with the number C<$index>
 
 TYPE is one of C<char>, C<uchar>, C<short>, C<ushort>, C<int>, C<uint>,
 C<long>, C<ulong>, C<half>, C<float>, C<double>, C<memory>, C<buffer>,
-C<image2d>, C<image3d>, C<sampler> or C<event>.
+C<image2d>, C<image3d>, C<sampler>, C<local> or C<event>.
 
 Chars and integers (including the half type) are specified as integers,
 float and double as floating point values, memory/buffer/image2d/image3d
-must be an object of that type or C<undef>, and sampler and event must be
-objects of that type.
+must be an object of that type or C<undef>, local-memory arguments are
+set by specifying the size, and sampler and event must be objects of that
+type.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetKernelArg.html>
 
@@ -1475,7 +1476,7 @@ package OpenCL;
 use common::sense;
 
 BEGIN {
-   our $VERSION = '0.95';
+   our $VERSION = '0.96';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);
