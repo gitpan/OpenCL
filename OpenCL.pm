@@ -159,12 +159,7 @@ functions.
       }
    ';
 
-   my $prog = $ctx->program_with_source ($src);
-
-   # build croaks on compile errors, so catch it and print the compile errors
-   eval { $prog->build ($dev, "-cl-fast-relaxed-math"); 1 }
-      or die $prog->build_log;
-
+   my $prog = $ctx->build_program ($src);
    my $kernel = $prog->kernel ("squareit");
 
 =head2 Create some input and output float buffers, then call the
@@ -269,10 +264,8 @@ This is quite a long example to get you going.
      write_imagef (img, (int2)(get_global_id (0), get_global_id (1)), (float4)(colour * p.x * p.x, 1.));
    }
    EOF
-   my $prog = $ctx->program_with_source ($src);
-   eval { $prog->build ($dev); 1 }
-      or die $prog->build_log ($dev);
 
+   my $prog = $ctx->build_program ($src);
    my $kernel = $prog->kernel ("juliatunnel");
 
    # program compiled, kernel ready, now draw and loop
@@ -338,7 +331,9 @@ as with short vectors, and returned as arrayrefs.
 
 =item * When enqueuing commands, the wait list is specified by adding
 extra arguments to the function - anywhere a C<$wait_events...> argument
-is documented this can be any number of event objects.
+is documented this can be any number of event objects. As an extsnion
+implemented by this module, C<undef> values will be ignored in the event
+list.
 
 =item * When enqueuing commands, if the enqueue method is called in void
 context, no event is created. In all other contexts an event is returned
@@ -383,6 +378,43 @@ For this to work, the OpenGL library must be loaded, a GLX context must
 have been created and be made current, and C<dlsym> must be available and
 capable of finding the function via C<RTLD_DEFAULT>.
 
+=cut
+
+package OpenCL;
+
+use common::sense;
+
+BEGIN {
+   our $VERSION = '0.97';
+
+   require XSLoader;
+   XSLoader::load (__PACKAGE__, $VERSION);
+
+   @OpenCL::Platform::ISA      =
+   @OpenCL::Device::ISA        =
+   @OpenCL::Context::ISA       =
+   @OpenCL::Queue::ISA         =
+   @OpenCL::Memory::ISA        =
+   @OpenCL::Sampler::ISA       =
+   @OpenCL::Program::ISA       =
+   @OpenCL::Kernel::ISA        =
+   @OpenCL::Event::ISA         = OpenCL::Object::;
+
+   @OpenCL::Buffer::ISA        =
+   @OpenCL::Image::ISA         = OpenCL::Memory::;
+
+   @OpenCL::BufferObj::ISA     = OpenCL::Buffer::;
+
+   @OpenCL::Image2D::ISA       =
+   @OpenCL::Image3D::ISA       =
+   @OpenCL::Image2DArray::ISA  =
+   @OpenCL::Image1D::ISA       =
+   @OpenCL::Image1DArray::ISA  =
+   @OpenCL::Image1DBuffer::ISA = OpenCL::Image::;
+
+   @OpenCL::UserEvent::ISA     = OpenCL::Event::;
+}
+
 =head2 THE OpenCL PACKAGE
 
 =over 4
@@ -424,6 +456,29 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clWaitForEvents.html
 
 =back
 
+=head2 THE OpenCL::Object CLASS
+
+This is the base class for all objects in the OpenCL module. The only
+method it implements is the C<id> method, which is only useful if you want
+to interface to OpenCL on the C level.
+
+=over 4
+
+=item $iv = $obj->id
+
+OpenCL objects are represented by pointers or integers on the C level. If
+you want to interface to an OpenCL object directly on the C level, then
+you need this value, which is returned by this method. You should use an
+C<IV> type in your code and cast that to the correct type.
+
+=cut
+
+sub OpenCL::Object::id {
+   ${$_[0]}
+}
+
+=back
+
 =head2 THE OpenCL::Platform CLASS
 
 =over 4
@@ -455,6 +510,13 @@ It's best to avoid this method and use one of the following convenience
 wrappers.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetPlatformInfo.html>
+
+=item $platform->unload_compiler
+
+Attempts to unload the compiler for this platform, for endless
+profit. Does nothing on OpenCL 1.1.
+
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clUnloadPlatformCompiler.html>
 
 =for gengetinfo begin platform
 
@@ -750,9 +812,9 @@ Calls C<clGetDeviceInfo> with C<CL_DEVICE_PARTITION_TYPES_EXT> and returns the r
 
 Calls C<clGetDeviceInfo> with C<CL_DEVICE_AFFINITY_DOMAINS_EXT> and returns the result.
 
-=item $uint = $device->reference_count_ext 
+=item $uint = $device->reference_count_ext
 
-Calls C<clGetDeviceInfo> with C<CL_DEVICE_REFERENCE_COUNT_EXT > and returns the result.
+Calls C<clGetDeviceInfo> with C<CL_DEVICE_REFERENCE_COUNT_EXT> and returns the result.
 
 =item @device_partition_property_exts = $device->partition_style_ext
 
@@ -766,11 +828,44 @@ Calls C<clGetDeviceInfo> with C<CL_DEVICE_PARTITION_STYLE_EXT> and returns the r
 
 =over 4
 
+=item $prog = $ctx->build_program ($program, $options = "")
+
+This convenience function tries to build the program on all devices in
+the context. If the build fails, then the function will C<croak> with the
+build log. Otherwise ti returns the program object.
+
+The C<$program> can either be a C<OpenCL::Program> object or a string
+containing the program. In the latter case, a program objetc will be
+created automatically.
+
+=cut
+
+sub OpenCL::Context::build_program {
+   my ($self, $prog, $options) = @_;
+
+   require Carp;
+
+   $prog = $self->program_with_source ($prog)
+      unless ref $prog;
+
+   for my $dev ($self->devices) {
+      eval { $prog->build ($dev, $options); 1 }
+         or Carp::croak ("Building OpenCL program for device '" . $dev->name . "' failed:\n"
+                       . $prog->build_log ($dev));
+   }
+
+   $prog
+}
+
 =item $queue = $ctx->queue ($device, $properties)
 
 Create a new OpenCL::Queue object from the context and the given device.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateCommandQueue.html>
+
+Example: create an out-of-order queue.
+
+   $queue = $ctx->queue ($device, OpenCL::QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
 
 =item $ev = $ctx->user_event
 
@@ -789,6 +884,13 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateBuffer.html>
 
 Creates a new OpenCL::Buffer (actually OpenCL::BufferObj) object and
 initialise it with the given data values.
+
+=item $img = $ctx->image ($self, $flags, $channel_order, $channel_type, $type, $width, $height, $depth, $array_size = 0, $row_pitch = 0, $slice_pitch = 0, $num_mip_level = 0, $num_samples = 0, $*data = &PL_sv_undef)
+
+Creates a new OpenCL::Image object and optionally initialises it with
+the given data values.
+
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateImage.html>
 
 =item $img = $ctx->image2d ($flags, $channel_order, $channel_type, $width, $height, $row_pitch = 0, $data = undef)
 
@@ -811,14 +913,21 @@ OpenGL buffer object.
 
 http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLBuffer.html
 
-=item $ctx->gl_texture2d ($flags, $target, $miplevel, $texture)
+=item $img = $ctx->gl_texture ($flags, $target, $miplevel, $texture)
+
+Creates a new OpenCL::Image object that refers to the given OpenGL
+texture object or buffer.
+
+http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateFromGLTexture.html
+
+=item $img = $ctx->gl_texture2d ($flags, $target, $miplevel, $texture)
 
 Creates a new OpenCL::Image2D object that refers to the given OpenGL
 2D texture object.
 
 http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateFromGLTexture2D.html
 
-=item $ctx->gl_texture3d ($flags, $target, $miplevel, $texture)
+=item $img = $ctx->gl_texture3d ($flags, $target, $miplevel, $texture)
 
 Creates a new OpenCL::Image3D object that refers to the given OpenGL
 3D texture object.
@@ -891,11 +1000,17 @@ no event object is created.
 
 They also allow you to specify any number of other event objects that this
 request has to wait for before it starts executing, by simply passing the
-event objects as extra parameters to the enqueue methods.
+event objects as extra parameters to the enqueue methods. To simplify
+program design, this module ignores any C<undef> values in the list of
+events. This makes it possible to code operations such as this, without
+having to put a valid event object into C<$event> first:
+
+   $event = $queue->enqueue_xxx (..., $event);
 
 Queues execute in-order by default, without any parallelism, so in most
 cases (i.e. you use only one queue) it's not necessary to wait for or
-create event objects.
+create event objects, althoguh an our of order queue is often a bit
+faster.
 
 =over 4
 
@@ -949,6 +1064,22 @@ Yeah.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferToImage.html>.
 
+=item $ev = $queue->enqueue_fill_buffer ($mem, $pattern, $offset, $size, ...)
+
+Fills the given buffer object with repeated applications of C<$pattern>,
+starting at C<$offset> for C<$size> octets.
+
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueFillBuffer.html>
+
+=item $ev = $queue->enqueue_fill_image ($img, $r, $g, $b, $a, $x, $y, $z, $width, $height, $depth, ...)
+
+Fills the given image area with the given rgba colour components. The
+components are normally floating point values between C<0> and C<1>,
+except when the image channel data type is a signe dor unsigned
+unnormalised format, in which case the range is determined by the format.
+
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueFillImage.html>
+
 =item $ev = $queue->enqueue_task ($kernel, $wait_events...)
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueTask.html>
@@ -971,10 +1102,6 @@ elements as @$global_work_size.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueNDRangeKernel.html>
 
-=item $ev = $queue->enqueue_marker ($wait_events...)
-
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMarker.html>
-
 =item $ev = $queue->enqueue_acquire_gl_objects ([object, ...], $wait_events...)
 
 Enqueues a list (an array-ref of OpenCL::Memory objects) to be acquired
@@ -993,9 +1120,13 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReleaseGLOb
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWaitForEvents.html>
 
-=item $queue->enqueue_barrier
+=item $ev = $queue->enqueue_marker ($wait_events...)
 
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueBarrier.html>
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueMarkerWithWaitList.html>
+
+=item $ev = $queue->enqueue_barrier ($wait_events...)
+
+L<http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueBarrierWithWaitList.html>
 
 =item $queue->flush
 
@@ -1120,11 +1251,13 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateSubBuffer.ht
 
 =head2 THE OpenCL::Image CLASS
 
-This is the superclass of all image objects - OpenCL::Image2D and OpenCL::Image3D.
+This is the superclass of all image objects - OpenCL::Image1D,
+OpenCL::Image1DArray, OpenCL::Image1DBuffer, OpenCL::Image2D,
+OpenCL::Image2DArray and OpenCL::Image3D.
 
 =over 4
 
-=item $packed_value = $ev->image_info ($name)
+=item $packed_value = $image->image_info ($name)
 
 See C<< $platform->info >> for details.
 
@@ -1132,6 +1265,11 @@ The reason this method is not called C<info> is that there already is an
 C<< ->info >> method inherited from C<OpenCL::Memory>.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clGetImageInfo.html>
+
+=item ($channel_order, $channel_data_type) = $image->format
+
+Returns the channel order and type used to create the image by calling
+C<clGetImageInfo> with C<CL_IMAGE_FORMAT>.
 
 =for gengetinfo begin image
 
@@ -1217,7 +1355,8 @@ Calls C<clGetSamplerInfo> with C<CL_SAMPLER_FILTER_MODE> and returns the result.
 
 =item $program->build ($device, $options = "")
 
-Tries to build the program with the givne options.
+Tries to build the program with the given options. See also the
+C<$ctx->build> convenience function.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clBuildProgram.html>
 
@@ -1234,6 +1373,12 @@ Creates an OpenCL::Kernel object out of the named C<__kernel> function in
 the program.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateKernel.html>
+
+=item @kernels = $program->kernels_in_program
+
+Returns all kernels successfully compiled for all devices in program.
+
+http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateKernelsInProgram.html
 
 =for gengetinfo begin program_build
 
@@ -1379,6 +1524,10 @@ must be an object of that type or C<undef>, local-memory arguments are
 set by specifying the size, and sampler and event must be objects of that
 type.
 
+Setting an argument for a kernel does NOT keep a reference to the object -
+for example, if you set an argument to some image object, free the image,
+and call the kernel, you will run into undefined behaviour.
+
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetKernelArg.html>
 
 =back
@@ -1470,27 +1619,6 @@ L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetUserEventStatus
 =back
 
 =cut
-
-package OpenCL;
-
-use common::sense;
-
-BEGIN {
-   our $VERSION = '0.96';
-
-   require XSLoader;
-   XSLoader::load (__PACKAGE__, $VERSION);
-
-   @OpenCL::Buffer::ISA =
-   @OpenCL::Image::ISA      = OpenCL::Memory::;
-
-   @OpenCL::BufferObj::ISA  = OpenCL::Buffer::;
-
-   @OpenCL::Image2D::ISA    =
-   @OpenCL::Image3D::ISA    = OpenCL::Image::;
-
-   @OpenCL::UserEvent::ISA  = OpenCL::Event::;
-}
 
 1;
 

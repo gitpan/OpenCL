@@ -89,7 +89,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
 
    while (<$fh>) {
       chomp;
-      my ($class, $name, $ctype) = split /,\s*/, $_, 3;
+      my ($class, $name, $ctype) = split /\s*,\s*/, $_, 3;
       next unless $class eq "cl_$CLASS\_info";
       next if $name eq "CL_IMAGE_FORMAT"; # struct
       next if $name eq "CL_PROGRAM_BINARIES"; # needs multiple calls

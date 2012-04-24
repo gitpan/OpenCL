@@ -1,13 +1,35 @@
 Revision history for Perl extension OpenCL.
 
 TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithBinary.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clUnloadCompiler.html # use 1.2 api?
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateKernelsInProgram.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetEventCallback.html, *pfn
-TODO: CL_IMAGE_FORMAT
-TODO: add long example
-TODO: ->build on multiple devices
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetMemObjectDestructorCallback.html, *pfn
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueUnmapMemObject.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapBuffer.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapImage.html
 TODO: some convenience methods maybe?
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCompileProgram.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clLinkProgram.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateProgramWithBuiltInKernels.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateSubDevices.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueMigrateMemObjects.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clGetKernelArgInfo.html (also generic accessor)
+
+0.97 Tue Apr 24 16:56:21 CEST 2012
+	- created $ctx->build_program utility function.
+	- enqueue_acquire/release_gl_objects did not return an event object.
+        - OpenCL::errno did not return the correct value.
+	- allow undef values in event wait lists, for convenience.
+        - implement $program->kernels_in_program.
+        - add opencl 1.2 constants.
+        - implement $ctx->image, $ctx->gl_texture, $platform->unload_compiler,
+          $queue->enqueue_fill_buffer/image, all untested (opencl 1.2).
+        - port image2d and image3d to the opencl 1.2 API.
+        - port enqueue_marker/barrier to the opencl 1.2 API, and croak
+          if the user requests something that 1.1 cannot do when compiled
+          against 1.1. This slightly changes the API for enqueue_barrier,
+          which now checks the context it is called in.
+        - add ->format accessor for CL_IMAGHE_FORMAT.
+	- $object->id function to access internal object id.
 
 0.96 Fri Apr 20 22:23:58 CEST 2012
         - ->enqueue_write_buffer actually called enqueue_read_buffer. d'oh.
