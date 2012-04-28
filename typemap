@@ -53,26 +53,26 @@ cl_gl_texture_info	T_UV
 cl_gl_platform_info	T_UV
 cl_gl_context_info	T_UV
 
-OpenCL::Platform	ptrobj
-OpenCL::Device		ptrobj
-OpenCL::Context		ptrobj
-OpenCL::Queue		ptrobj
-OpenCL::Memory		ptrobj
-OpenCL::Buffer		ptrobj
-OpenCL::BufferObj	ptrobj
-OpenCL::Image		ptrobj
-OpenCL::Image2D		ptrobj
-OpenCL::Image3D		ptrobj
-OpenCL::Memory_ornull	ptrobj_ornull
-OpenCL::Buffer_ornull	ptrobj_ornull
-OpenCL::Image_ornull	ptrobj_ornull
-OpenCL::Image2D_ornull	ptrobj_ornull
-OpenCL::Image3D_ornull	ptrobj_ornull
-OpenCL::Sampler		ptrobj
-OpenCL::Program		ptrobj
-OpenCL::Kernel		ptrobj
-OpenCL::Event		ptrobj
-OpenCL::UserEvent	ptrobj
+OpenCL::Platform	clobj
+OpenCL::Device		clobj
+OpenCL::Context		clobj
+OpenCL::Queue		clobj
+OpenCL::Memory		clobj
+OpenCL::Buffer		clobj
+OpenCL::BufferObj	clobj
+OpenCL::Image		clobj
+OpenCL::Image2D		clobj
+OpenCL::Image3D		clobj
+OpenCL::Memory_ornull	clobj_ornull
+OpenCL::Buffer_ornull	clobj_ornull
+OpenCL::Image_ornull	clobj_ornull
+OpenCL::Image2D_ornull	clobj_ornull
+OpenCL::Image3D_ornull	clobj_ornull
+OpenCL::Sampler		clobj
+OpenCL::Program		clobj
+OpenCL::Kernel		clobj
+OpenCL::Event		clobj
+OpenCL::UserEvent	clobj
 
 FUTURE			future
 
@@ -85,9 +85,9 @@ future
 context_properties
 	$var = SvCONTEXTPROPERTIES (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, 0, 0)
 
-ptrobj
-	$var = ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")
+clobj
+	$var = ($type)SvCLOBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")
 
-ptrobj_ornull
-	$var = SvOK ($arg) ? ($type)SvPTROBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${\substr $ntype, 0, -7}\") : 0
+clobj_ornull
+	$var = SvOK ($arg) ? ($type)SvCLOBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${\substr $ntype, 0, -7}\") : 0
 

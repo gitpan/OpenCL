@@ -18,5 +18,6 @@ no_index:
     - t
     - inc
 requires:
-  common::sense: 0
-version: 0.97
+  Async::Interrupt: 1.1
+  common::sense: 3
+version: 0.98

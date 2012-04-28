@@ -2,6 +2,10 @@
 #include "perl.h"
 #include "XSUB.h"
 
+#define X_STACKSIZE sizeof (void *) * 512 * 1024 // 2-4mb should be enough, really
+#include "xthread.h"
+#include "schmorp.h"
+
 #ifdef I_DLFCN
   #include <dlfcn.h>
 #endif
@@ -191,20 +195,6 @@ static cl_int res;
 
 /*****************************************************************************/
 
-#define NEW_MORTAL_OBJ(class,ptr) sv_setref_pv (sv_newmortal (), class, ptr)
-#define XPUSH_NEW_OBJ(class,ptr) XPUSHs (NEW_MORTAL_OBJ (class, ptr))
-
-static void *
-SvPTROBJ (const char *func, const char *svname, SV *sv, const char *pkg)
-{
-  if (SvROK (sv) && sv_derived_from (sv, pkg))
-    return (void *)SvIV (SvRV (sv));
-
-   croak ("%s: %s is not of type %s", func, svname, pkg);
-}
-
-/*****************************************************************************/
-
 static cl_context_properties *
 SvCONTEXTPROPERTIES (const char *func, const char *svname, SV *sv, cl_context_properties *extra, int extracount)
 {
@@ -272,6 +262,252 @@ SvCONTEXTPROPERTIES (const char *func, const char *svname, SV *sv, cl_context_pr
 
 /*****************************************************************************/
 
+#define NEW_CLOBJ(class,ptr) sv_setref_pv (sv_newmortal (), class, ptr)
+#define PUSH_CLOBJ(class,ptr)  PUSHs  (NEW_CLOBJ (class, ptr))
+#define XPUSH_CLOBJ(class,ptr) XPUSHs (NEW_CLOBJ (class, ptr))
+
+/* cl objects are either \$iv, or [$iv, ...] */
+/* they can be upgraded at runtime to the array form */
+static void *
+SvCLOBJ (const char *func, const char *svname, SV *sv, const char *pkg)
+{
+  if (SvROK (sv) && sv_derived_from (sv, pkg))
+    return (void *)SvIV (SvRV (sv));
+
+   croak ("%s: %s is not of type %s", func, svname, pkg);
+}
+
+/*****************************************************************************/
+/* callback stuff */
+
+/* default context callback, log to stderr */
+static void CL_CALLBACK
+context_default_notify (const char *msg, const void *info, size_t cb, void *data)
+{
+  fprintf (stderr, "OpenCL Context Notify: %s\n", msg);
+}
+
+typedef struct
+{
+  int free_cb;
+  void (*push)(void *data1, void *data2, void *data3);
+} eq_vtbl;
+
+typedef struct eq_item
+{
+  struct eq_item *next;
+  eq_vtbl *vtbl;
+  SV *cb;
+  void *data1, *data2, *data3;
+} eq_item;
+
+static void (*eq_signal_func)(void *signal_arg, int value);
+static void *eq_signal_arg;
+static xmutex_t eq_lock = X_MUTEX_INIT;
+static eq_item *eq_head, *eq_tail;
+
+static void
+eq_enq (eq_vtbl *vtbl, SV *cb, void *data1, void *data2, void *data3)
+{
+  eq_item *item = malloc (sizeof (eq_item));
+
+  item->next  = 0;
+  item->vtbl  = vtbl;
+  item->cb    = cb;
+  item->data1 = data1;
+  item->data2 = data2;
+  item->data3 = data3;
+
+  X_LOCK (eq_lock);
+
+  *(eq_head ? &eq_tail->next : &eq_head) = item;
+  eq_tail = item;
+
+  X_UNLOCK (eq_lock);
+
+  eq_signal_func (eq_signal_arg, 0);
+}
+
+static eq_item *
+eq_dec (void)
+{
+  eq_item *res;
+
+  X_LOCK (eq_lock);
+
+  res = eq_head;
+  if (res)
+    eq_head = res->next;
+
+  X_UNLOCK (eq_lock);
+
+  return res;
+}
+
+static void
+eq_poll (void)
+{
+  eq_item *item;
+
+  while ((item = eq_dec ()))
+    {
+      ENTER;
+      SAVETMPS;
+
+      dSP;
+      PUSHMARK (SP);
+      EXTEND (SP, 2);
+
+      if (item->vtbl->free_cb)
+        sv_2mortal (item->cb);
+
+      PUTBACK;
+      item->vtbl->push (item->data1, item->data2, item->data3);
+
+      SV *cb = item->cb;
+      free (item);
+
+      call_sv (cb, G_DISCARD | G_VOID);
+
+      FREETMPS;
+      LEAVE;
+    }
+}
+
+static void
+eq_poll_interrupt (pTHX_ void *c_arg, int value)
+{
+  eq_poll ();
+}
+
+/*****************************************************************************/
+/* context notify */
+
+static void
+eq_context_push (void *data1, void *data2, void *data3)
+{
+  dSP;
+  PUSHs (sv_2mortal (newSVpv  (data1, 0)));
+  PUSHs (sv_2mortal (newSVpvn (data2, (STRLEN)data3)));
+  PUTBACK;
+
+  free (data1);
+  free (data2);
+}
+
+static eq_vtbl eq_context_vtbl = { 0, eq_context_push };
+
+static void CL_CALLBACK
+eq_context_notify (const char *msg, const void *pvt, size_t cb, void *user_data)
+{
+  void *pvt_copy = malloc (cb);
+  memcpy (pvt_copy, pvt, cb);
+  eq_enq (&eq_context_vtbl, user_data, strdup (msg), pvt_copy, (void *)cb);
+}
+
+#define CONTEXT_NOTIFY_CALLBACK \
+  void (CL_CALLBACK *pfn_notify)(const char *, const void *, size_t, void *) = context_default_notify; \
+  void *user_data = 0; \
+  \
+  if (SvOK (notify)) \
+    { \
+      pfn_notify = eq_context_notify; \
+      user_data = s_get_cv (notify); \
+    }
+
+static SV *
+new_clobj_context (cl_context ctx, void *user_data)
+{
+  SV *sv = NEW_CLOBJ ("OpenCL::Context", ctx);
+
+  if (user_data)
+    sv_magicext (SvRV (sv), user_data, PERL_MAGIC_ext, 0, 0, 0);
+
+  return sv;
+}
+
+#define XPUSH_CLOBJ_CONTEXT XPUSHs (new_clobj_context (ctx, user_data));
+
+/*****************************************************************************/
+/* build/compile/link notify */
+
+static void
+eq_program_push (void *data1, void *data2, void *data3)
+{
+  dSP;
+  PUSH_CLOBJ ("OpenCL::Program", data1);
+  PUTBACK;
+}
+
+static eq_vtbl eq_program_vtbl = { 1, eq_program_push };
+
+static void CL_CALLBACK
+eq_program_notify (cl_program program, void *user_data)
+{
+  eq_enq (&eq_program_vtbl, user_data, (void *)program, 0, 0);
+}
+
+struct build_args
+{
+  cl_program program;
+  char *options;
+  void *user_data;
+  cl_uint num_devices;
+};
+
+X_THREAD_PROC (build_program_thread)
+{
+  struct build_args *arg = thr_arg;
+
+  clBuildProgram (arg->program, arg->num_devices, arg->num_devices ? (void *)(arg + 1) : 0, arg->options, 0, 0);
+  
+  if (arg->user_data)
+    eq_program_notify (arg->program, arg->user_data);
+  else
+    clReleaseProgram (arg->program);
+
+  free (arg->options);
+  free (arg);
+}
+
+static void
+build_program_async (cl_program program, cl_uint num_devices, const cl_device_id *device_list, const char *options, void *user_data)
+{
+  struct build_args *arg = malloc (sizeof (struct build_args) + sizeof (*device_list) * num_devices);
+
+  arg->program     = program;
+  arg->options     = strdup (options);
+  arg->user_data   = user_data;
+  arg->num_devices = num_devices;
+  memcpy (arg + 1, device_list, sizeof (*device_list) * num_devices);
+
+  xthread_t id;
+  thread_create (&id, build_program_thread, arg);
+}
+
+/*****************************************************************************/
+/* event objects */
+
+static void
+eq_event_push (void *data1, void *data2, void *data3)
+{
+  dSP;
+  PUSH_CLOBJ ("OpenCL::Event", data1);
+  PUSHs (sv_2mortal (newSViv ((IV)data2)));
+  PUTBACK;
+}
+
+static eq_vtbl eq_event_vtbl = { 1, eq_event_push };
+
+static void CL_CALLBACK
+eq_event_notify (cl_event event, cl_int event_command_exec_status, void *user_data)
+{
+  clRetainEvent (event);
+  eq_enq (&eq_event_vtbl, user_data, (void *)event, (void *)(IV)event_command_exec_status, 0);
+}
+
+/*****************************************************************************/
+
 static size_t
 img_row_pitch (cl_mem img)
 {
@@ -295,7 +531,7 @@ event_list (SV **items, cl_uint *rcount)
     {
       --count;
       if (SvOK (items [count]))
-        list [i++] = SvPTROBJ ("clEnqueue", "wait_events", items [count], "OpenCL::Event");
+        list [i++] = SvCLOBJ ("clEnqueue", "wait_events", items [count], "OpenCL::Event");
     }
   while (count);
 
@@ -324,6 +560,17 @@ MODULE = OpenCL		PACKAGE = OpenCL
 
 PROTOTYPES: ENABLE
 
+void
+poll ()
+	CODE:
+        eq_poll ();
+
+void
+_eq_initialise (IV func, IV arg)
+	CODE:
+        eq_signal_func = (void (*)(void *, int))func;
+        eq_signal_arg  = (void*)arg;
+
 BOOT:
 {
   HV *stash = gv_stashpv ("OpenCL", 1);
@@ -341,8 +588,11 @@ BOOT:
     { sizeof (cl_double), "SIZEOF_DOUBLE" },
 #include "constiv.h"
   };
+
   for (civ = const_iv + sizeof (const_iv) / sizeof (const_iv [0]); civ > const_iv; civ--)
     newCONSTSUB (stash, (char *)civ[-1].name, newSViv (civ[-1].iv));
+
+  sv_setiv (perl_get_sv ("OpenCL::POLL_FUNC", TRUE), (IV)eq_poll_interrupt);
 }
 
 cl_int
@@ -353,7 +603,7 @@ errno ()
         RETVAL
 
 const char *
-err2str (cl_int err)
+err2str (cl_int err = res)
 
 const char *
 enum2str (cl_uint value)
@@ -371,22 +621,19 @@ platforms ()
 
         EXTEND (SP, count);
         for (i = 0; i < count; ++i)
-          PUSHs (NEW_MORTAL_OBJ ("OpenCL::Platform", list [i]));
+          PUSH_CLOBJ ("OpenCL::Platform", list [i]);
 
 void
-context_from_type (cl_context_properties *properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, FUTURE notify = 0)
+context_from_type (cl_context_properties *properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, SV *notify = &PL_sv_undef)
 	PPCODE:
+        CONTEXT_NOTIFY_CALLBACK;
         NEED_SUCCESS_ARG (cl_context ctx, CreateContextFromType, (properties, type, 0, 0, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
-
-#if 0
+        XPUSH_CLOBJ_CONTEXT;
 
 void
-context (cl_context_properties *properties = 0, FUTURE devices, FUTURE notify = 0)
+context (FUTURE properties, FUTURE devices, FUTURE notify)
 	PPCODE:
 	/* der Gipfel der Kunst */
-
-#endif
 
 void
 wait_for_events (...)
@@ -447,7 +694,7 @@ devices (OpenCL::Platform self, cl_device_type type = CL_DEVICE_TYPE_ALL)
           PUSHs (sv_setref_pv (sv_newmortal (), "OpenCL::Device", list [i]));
 
 void
-context (OpenCL::Platform self, cl_context_properties *properties = 0, SV *devices, FUTURE notify = 0)
+context (OpenCL::Platform self, cl_context_properties *properties, SV *devices, SV *notify = &PL_sv_undef)
 	PPCODE:
         if (!SvROK (devices) || SvTYPE (SvRV (devices)) != SVt_PVAV)
           croak ("OpenCL::Platform::context argument 'device' must be an arrayref with device objects, in call");
@@ -455,21 +702,24 @@ context (OpenCL::Platform self, cl_context_properties *properties = 0, SV *devic
         AV *av = (AV *)SvRV (devices);
         cl_uint num_devices = av_len (av) + 1;
         cl_device_id *device_list = tmpbuf (sizeof (cl_device_id) * num_devices);
+
         int i;
-
         for (i = num_devices; i--; )
-          device_list [i] = SvPTROBJ ("clCreateContext", "devices", *av_fetch (av, i, 0), "OpenCL::Device");
+          device_list [i] = SvCLOBJ ("clCreateContext", "devices", *av_fetch (av, i, 0), "OpenCL::Device");
 
-	NEED_SUCCESS_ARG (cl_context ctx, CreateContext, (properties, num_devices, device_list, 0, 0, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
+        CONTEXT_NOTIFY_CALLBACK;
+	NEED_SUCCESS_ARG (cl_context ctx, CreateContext, (properties, num_devices, device_list, pfn_notify, user_data, &res));
+        XPUSH_CLOBJ_CONTEXT;
 
 void
-context_from_type (OpenCL::Platform self, SV *properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, FUTURE notify = 0)
+context_from_type (OpenCL::Platform self, SV *properties = 0, cl_device_type type = CL_DEVICE_TYPE_DEFAULT, SV *notify = &PL_sv_undef)
 	PPCODE:
 	cl_context_properties extra[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)self };
         cl_context_properties *props = SvCONTEXTPROPERTIES ("OpenCL::Platform::context_from_type", "properties", properties, extra, 2);
+
+        CONTEXT_NOTIFY_CALLBACK;
         NEED_SUCCESS_ARG (cl_context ctx, CreateContextFromType, (props, type, 0, 0, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Context", ctx);
+        XPUSH_CLOBJ_CONTEXT;
 
 MODULE = OpenCL		PACKAGE = OpenCL::Device
 
@@ -652,7 +902,7 @@ platform (OpenCL::Device self)
  EXTEND (SP, 1);
  const int i = 0;
  {
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Platform", value [i]));
+   PUSH_CLOBJ ("OpenCL::Platform", value [i]);
  }
 
 void
@@ -681,7 +931,7 @@ parent_device_ext (OpenCL::Device self)
  EXTEND (SP, 1);
  const int i = 0;
  {
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+   PUSH_CLOBJ ("OpenCL::Device", value [i]);
  }
 
 void
@@ -718,13 +968,13 @@ void
 queue (OpenCL::Context self, OpenCL::Device device, cl_command_queue_properties properties = 0)
 	PPCODE:
 	NEED_SUCCESS_ARG (cl_command_queue queue, CreateCommandQueue, (self, device, properties, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Queue", queue);
+        XPUSH_CLOBJ ("OpenCL::Queue", queue);
 
 void
 user_event (OpenCL::Context self)
 	PPCODE:
 	NEED_SUCCESS_ARG (cl_event ev, CreateUserEvent, (self, &res));
-        XPUSH_NEW_OBJ ("OpenCL::UserEvent", ev);
+        XPUSH_CLOBJ ("OpenCL::UserEvent", ev);
 
 void
 buffer (OpenCL::Context self, cl_mem_flags flags, size_t len)
@@ -733,7 +983,7 @@ buffer (OpenCL::Context self, cl_mem_flags flags, size_t len)
           croak ("OpenCL::Context::buffer: cannot use/copy host ptr when no data is given, use $context->buffer_sv instead?");
         
         NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (self, flags, len, 0, &res));
-        XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
+        XPUSH_CLOBJ ("OpenCL::BufferObj", mem);
 
 void
 buffer_sv (OpenCL::Context self, cl_mem_flags flags, SV *data)
@@ -743,12 +993,12 @@ buffer_sv (OpenCL::Context self, cl_mem_flags flags, SV *data)
         if (!(flags & (CL_MEM_USE_HOST_PTR | CL_MEM_COPY_HOST_PTR)))
           croak ("OpenCL::Context::buffer_sv: you have to specify use or copy host ptr when buffer data is given, use $context->buffer instead?");
         NEED_SUCCESS_ARG (cl_mem mem, CreateBuffer, (self, flags, len, ptr, &res));
-        XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
+        XPUSH_CLOBJ ("OpenCL::BufferObj", mem);
 
 #if CL_VERSION_1_2
 
 void
-image (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, cl_mem_object_type type, size_t width, size_t height, size_t depth, size_t array_size = 0, size_t row_pitch = 0, size_t slice_pitch = 0, cl_uint num_mip_level = 0, cl_uint num_samples = 0, SV *data = &PL_sv_undef)
+image (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, cl_mem_object_type type, size_t width, size_t height, size_t depth = 0, size_t array_size = 0, size_t row_pitch = 0, size_t slice_pitch = 0, cl_uint num_mip_level = 0, cl_uint num_samples = 0, SV *data = &PL_sv_undef)
 	PPCODE:
 	STRLEN len;
         char *ptr = SvOK (data) ? SvPVbyte (data, len) : 0;
@@ -758,7 +1008,7 @@ image (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_order,
           width, height, depth,
           array_size, row_pitch, slice_pitch,
           num_mip_level, num_samples,
-	  type == CL_MEM_OBJECT_IMAGE1D_BUFFER ? (cl_mem)SvPTROBJ ("OpenCL::Context::Image", "data", data, "OpenCL::Buffer") : 0
+	  type == CL_MEM_OBJECT_IMAGE1D_BUFFER ? (cl_mem)SvCLOBJ ("OpenCL::Context::Image", "data", data, "OpenCL::Buffer") : 0
         };
 	NEED_SUCCESS_ARG (cl_mem mem, CreateImage, (self, flags, &format, &desc, ptr, &res));
         char *klass = "OpenCL::Image";
@@ -771,7 +1021,7 @@ image (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_order,
             case CL_MEM_OBJECT_IMAGE2D_ARRAY:	klass = "OpenCL::Image2DArray";  break;
             case CL_MEM_OBJECT_IMAGE3D:		klass = "OpenCL::Image3D";       break;
           }
-        XPUSH_NEW_OBJ (klass, mem);
+        XPUSH_CLOBJ (klass, mem);
 
 #endif
 
@@ -787,7 +1037,7 @@ image2d (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_orde
         const cl_image_desc desc = { CL_MEM_OBJECT_IMAGE2D, width, height, 0, 0, row_pitch, 0, 0, 0, 0 };
 	NEED_SUCCESS_ARG (cl_mem mem, CreateImage, (self, flags, &format, &desc, ptr, &res));
 #endif
-        XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
+        XPUSH_CLOBJ ("OpenCL::Image2D", mem);
 
 void
 image3d (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_order, cl_channel_type channel_type, size_t width, size_t height, size_t depth, size_t row_pitch = 0, size_t slice_pitch = 0, SV *data = &PL_sv_undef)
@@ -801,7 +1051,7 @@ image3d (OpenCL::Context self, cl_mem_flags flags, cl_channel_order channel_orde
         const cl_image_desc desc = { CL_MEM_OBJECT_IMAGE3D, width, height, depth, 0, row_pitch, slice_pitch, 0, 0, 0 };
 	NEED_SUCCESS_ARG (cl_mem mem, CreateImage, (self, flags, &format, &desc, ptr, &res));
 #endif
-        XPUSH_NEW_OBJ ("OpenCL::Image3D", mem);
+        XPUSH_CLOBJ ("OpenCL::Image3D", mem);
 
 #if cl_apple_gl_sharing || cl_khr_gl_sharing
 
@@ -809,13 +1059,13 @@ void
 gl_buffer (OpenCL::Context self, cl_mem_flags flags, cl_GLuint bufobj)
 	PPCODE:
         NEED_SUCCESS_ARG (cl_mem mem, CreateFromGLBuffer, (self, flags, bufobj, &res));
-        XPUSH_NEW_OBJ ("OpenCL::BufferObj", mem);
+        XPUSH_CLOBJ ("OpenCL::BufferObj", mem);
 
 void
 gl_renderbuffer (OpenCL::Context self, cl_mem_flags flags, cl_GLuint renderbuffer)
 	PPCODE:
 	NEED_SUCCESS_ARG (cl_mem mem, CreateFromGLRenderbuffer, (self, flags, renderbuffer, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
+        XPUSH_CLOBJ ("OpenCL::Image2D", mem);
 
 #if CL_VERSION_1_2
 
@@ -836,7 +1086,7 @@ gl_texture (OpenCL::Context self, cl_mem_flags flags, cl_GLenum target, cl_GLint
             case CL_GL_OBJECT_TEXTURE2D_ARRAY:	klass = "OpenCL::Image2DArray";  break;
             case CL_GL_OBJECT_TEXTURE3D:	klass = "OpenCL::Image3D";       break;
           }
-        XPUSH_NEW_OBJ (klass, mem);
+        XPUSH_CLOBJ (klass, mem);
 
 #endif
 
@@ -848,7 +1098,7 @@ gl_texture2d (OpenCL::Context self, cl_mem_flags flags, cl_GLenum target, cl_GLi
 #else
 	NEED_SUCCESS_ARG (cl_mem mem, CreateFromGLTexture  , (self, flags, target, miplevel, texture, &res));
 #endif
-        XPUSH_NEW_OBJ ("OpenCL::Image2D", mem);
+        XPUSH_CLOBJ ("OpenCL::Image2D", mem);
 
 void
 gl_texture3d (OpenCL::Context self, cl_mem_flags flags, cl_GLenum target, cl_GLint miplevel, cl_GLuint texture)
@@ -858,7 +1108,7 @@ gl_texture3d (OpenCL::Context self, cl_mem_flags flags, cl_GLenum target, cl_GLi
 #else
 	NEED_SUCCESS_ARG (cl_mem mem, CreateFromGLTexture  , (self, flags, target, miplevel, texture, &res));
 #endif
-        XPUSH_NEW_OBJ ("OpenCL::Image3D", mem);
+        XPUSH_CLOBJ ("OpenCL::Image3D", mem);
 
 #endif
 
@@ -888,7 +1138,7 @@ void
 sampler (OpenCL::Context self, cl_bool normalized_coords, cl_addressing_mode addressing_mode, cl_filter_mode filter_mode)
 	PPCODE:
 	NEED_SUCCESS_ARG (cl_sampler sampler, CreateSampler, (self, normalized_coords, addressing_mode, filter_mode, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Sampler", sampler);
+        XPUSH_CLOBJ ("OpenCL::Sampler", sampler);
 
 void
 program_with_source (OpenCL::Context self, SV *program)
@@ -899,7 +1149,7 @@ program_with_source (OpenCL::Context self, SV *program)
         
         len2 = len;
 	NEED_SUCCESS_ARG (cl_program prog, CreateProgramWithSource, (self, 1, &ptr, &len2, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Program", prog);
+        XPUSH_CLOBJ ("OpenCL::Program", prog);
 
 #BEGIN:context
 
@@ -926,7 +1176,7 @@ devices (OpenCL::Context self)
  EXTEND (SP, n);
  for (i = 0; i < n; ++i)
  {
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+   PUSH_CLOBJ ("OpenCL::Device", value [i]);
  }
 
 void
@@ -951,7 +1201,9 @@ DESTROY (OpenCL::Queue self)
         clReleaseCommandQueue (self);
 
 void
-enqueue_read_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, size_t offset, size_t len, SV *data, ...)
+read_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, size_t offset, size_t len, SV *data, ...)
+	ALIAS:
+	enqueue_read_buffer = 0
 	PPCODE:
 	cl_event ev = 0;
         EVENT_LIST (6, items - 6);
@@ -963,10 +1215,12 @@ enqueue_read_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, s
         NEED_SUCCESS (EnqueueReadBuffer, (self, mem, blocking, offset, len, SvPVX (data), event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_write_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, size_t offset, SV *data, ...)
+write_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, size_t offset, SV *data, ...)
+	ALIAS:
+	enqueue_write_buffer = 0
 	PPCODE:
 	cl_event ev = 0;
 	STRLEN len;
@@ -976,12 +1230,14 @@ enqueue_write_buffer (OpenCL::Queue self, OpenCL::Buffer mem, cl_bool blocking, 
         NEED_SUCCESS (EnqueueWriteBuffer, (self, mem, blocking, offset, len, ptr, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 #if CL_VERSION_1_2
 
 void
-enqueue_fill_buffer (OpenCL::Queue self, OpenCL::Buffer mem, SV *data, size_t offset, size_t size, ...)
+fill_buffer (OpenCL::Queue self, OpenCL::Buffer mem, SV *data, size_t offset, size_t size, ...)
+	ALIAS:
+	enqueue_fill_buffer = 0
 	PPCODE:
 	cl_event ev = 0;
 	STRLEN len;
@@ -991,10 +1247,12 @@ enqueue_fill_buffer (OpenCL::Queue self, OpenCL::Buffer mem, SV *data, size_t of
         NEED_SUCCESS (EnqueueFillBuffer, (self, mem, ptr, len, offset, size, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_fill_image (OpenCL::Queue self, OpenCL::Image img, NV r, NV g, NV b, NV a, size_t x, size_t y, size_t z, size_t width, size_t height, size_t depth, ...)
+fill_image (OpenCL::Queue self, OpenCL::Image img, NV r, NV g, NV b, NV a, size_t x, size_t y, size_t z, size_t width, size_t height, size_t depth, ...)
+	ALIAS:
+	enqueue_fill_image = 0
 	PPCODE:
 	cl_event ev = 0;
 	STRLEN len;
@@ -1013,16 +1271,18 @@ enqueue_fill_image (OpenCL::Queue self, OpenCL::Image img, NV r, NV g, NV b, NV 
         if (format.image_channel_data_type < CL_SNORM_INT8 || CL_FLOAT < format.image_channel_data_type)
           croak ("enqueue_fill_image: image has unsupported channel type, only opencl 1.2 channel types supported.");
 
-        NEED_SUCCESS (EnqueueFillImage, (self, img, c_fus [fus [format.image_channel_data_type]],
+        NEED_SUCCESS (EnqueueFillImage, (self, img, c_fus [fus [format.image_channel_data_type - CL_SNORM_INT8]],
                                          origin, region, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 #endif
 
 void
-enqueue_copy_buffer (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_offset, size_t dst_offset, size_t len, ...)
+copy_buffer (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_offset, size_t dst_offset, size_t len, ...)
+	ALIAS:
+	enqueue_copy_buffer = 0
 	PPCODE:
 	cl_event ev = 0;
         EVENT_LIST (6, items - 6);
@@ -1030,10 +1290,12 @@ enqueue_copy_buffer (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer dst,
         NEED_SUCCESS (EnqueueCopyBuffer, (self, src, dst, src_offset, dst_offset, len, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_read_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool blocking, size_t buf_x, size_t buf_y, size_t buf_z, size_t host_x, size_t host_y, size_t host_z, size_t width, size_t height, size_t depth, size_t buf_row_pitch, size_t buf_slice_pitch, size_t host_row_pitch, size_t host_slice_pitch, SV *data, ...)
+read_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool blocking, size_t buf_x, size_t buf_y, size_t buf_z, size_t host_x, size_t host_y, size_t host_z, size_t width, size_t height, size_t depth, size_t buf_row_pitch, size_t buf_slice_pitch, size_t host_row_pitch, size_t host_slice_pitch, SV *data, ...)
+	ALIAS:
+	enqueue_read_buffer_rect = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t buf_origin [3] = { buf_x , buf_y , buf_z  };
@@ -1062,10 +1324,12 @@ enqueue_read_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool blocki
         NEED_SUCCESS (EnqueueReadBufferRect, (self, buf, blocking, buf_origin, host_origin, region, buf_row_pitch, buf_slice_pitch, host_row_pitch, host_slice_pitch, SvPVX (data), event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_write_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool blocking, size_t buf_x, size_t buf_y, size_t buf_z, size_t host_x, size_t host_y, size_t host_z, size_t width, size_t height, size_t depth, size_t buf_row_pitch, size_t buf_slice_pitch, size_t host_row_pitch, size_t host_slice_pitch, SV *data, ...)
+write_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool blocking, size_t buf_x, size_t buf_y, size_t buf_z, size_t host_x, size_t host_y, size_t host_z, size_t width, size_t height, size_t depth, size_t buf_row_pitch, size_t buf_slice_pitch, size_t host_row_pitch, size_t host_slice_pitch, SV *data, ...)
+	ALIAS:
+	enqueue_write_buffer_rect = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t buf_origin [3] = { buf_x , buf_y , buf_z  };
@@ -1095,10 +1359,12 @@ enqueue_write_buffer_rect (OpenCL::Queue self, OpenCL::Memory buf, cl_bool block
         NEED_SUCCESS (EnqueueWriteBufferRect, (self, buf, blocking, buf_origin, host_origin, region, buf_row_pitch, buf_slice_pitch, host_row_pitch, host_slice_pitch, ptr, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_copy_buffer_rect (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t src_row_pitch, size_t src_slice_pitch, size_t dst_row_pitch, size_t dst_slice_pitch, ...)
+copy_buffer_rect (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t src_row_pitch, size_t src_slice_pitch, size_t dst_row_pitch, size_t dst_slice_pitch, ...)
+	ALIAS:
+	enqueue_copy_buffer_rect = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
@@ -1109,10 +1375,12 @@ enqueue_copy_buffer_rect (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Buffer
         NEED_SUCCESS (EnqueueCopyBufferRect, (self, src, dst, src_origin, dst_origin, region, src_row_pitch, src_slice_pitch, dst_row_pitch, dst_slice_pitch, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_read_image (OpenCL::Queue self, OpenCL::Image src, cl_bool blocking, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
+read_image (OpenCL::Queue self, OpenCL::Image src, cl_bool blocking, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
+	ALIAS:
+	enqueue_read_image = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
@@ -1134,10 +1402,12 @@ enqueue_read_image (OpenCL::Queue self, OpenCL::Image src, cl_bool blocking, siz
         NEED_SUCCESS (EnqueueReadImage, (self, src, blocking, src_origin, region, row_pitch, slice_pitch, SvPVX (data), event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_write_image (OpenCL::Queue self, OpenCL::Image dst, cl_bool blocking, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
+write_image (OpenCL::Queue self, OpenCL::Image dst, cl_bool blocking, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, size_t row_pitch, size_t slice_pitch, SV *data, ...)
+	ALIAS:
+	enqueue_write_image = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
@@ -1160,10 +1430,12 @@ enqueue_write_image (OpenCL::Queue self, OpenCL::Image dst, cl_bool blocking, si
         NEED_SUCCESS (EnqueueWriteImage, (self, dst, blocking, dst_origin, region, row_pitch, slice_pitch, ptr, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_copy_image (OpenCL::Queue self, OpenCL::Image src, OpenCL::Image dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+copy_image (OpenCL::Queue self, OpenCL::Image src, OpenCL::Image dst, size_t src_x, size_t src_y, size_t src_z, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+	ALIAS:
+	enqueue_copy_image = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
@@ -1174,10 +1446,12 @@ enqueue_copy_image (OpenCL::Queue self, OpenCL::Image src, OpenCL::Image dst, si
         NEED_SUCCESS (EnqueueCopyImage, (self, src, dst, src_origin, dst_origin, region, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_copy_image_to_buffer (OpenCL::Queue self, OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t dst_offset, ...)
+copy_image_to_buffer (OpenCL::Queue self, OpenCL::Image src, OpenCL::Buffer dst, size_t src_x, size_t src_y, size_t src_z, size_t width, size_t height, size_t depth, size_t dst_offset, ...)
+	ALIAS:
+	enqueue_copy_image_to_buffer = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t src_origin[3] = { src_x, src_y, src_z };
@@ -1187,10 +1461,12 @@ enqueue_copy_image_to_buffer (OpenCL::Queue self, OpenCL::Image src, OpenCL::Buf
         NEED_SUCCESS (EnqueueCopyImageToBuffer, (self, src, dst, src_origin, region, dst_offset, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_copy_buffer_to_image (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+copy_buffer_to_image (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Image dst, size_t src_offset, size_t dst_x, size_t dst_y, size_t dst_z, size_t width, size_t height, size_t depth, ...)
+	ALIAS:
+	enqueue_copy_buffer_to_image = 0
 	PPCODE:
 	cl_event ev = 0;
         const size_t dst_origin[3] = { dst_x, dst_y, dst_z };
@@ -1200,10 +1476,12 @@ enqueue_copy_buffer_to_image (OpenCL::Queue self, OpenCL::Buffer src, OpenCL::Im
         NEED_SUCCESS (EnqueueCopyBufferToImage, (self, src, dst, src_offset, dst_origin, region, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_task (OpenCL::Queue self, OpenCL::Kernel kernel, ...)
+task (OpenCL::Queue self, OpenCL::Kernel kernel, ...)
+	ALIAS:
+	enqueue_task = 0
 	PPCODE:
 	cl_event ev = 0;
         EVENT_LIST (2, items - 2);
@@ -1211,10 +1489,12 @@ enqueue_task (OpenCL::Queue self, OpenCL::Kernel kernel, ...)
         NEED_SUCCESS (EnqueueTask, (self, kernel, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_nd_range_kernel (OpenCL::Queue self, OpenCL::Kernel kernel, SV *global_work_offset, SV *global_work_size, SV *local_work_size = &PL_sv_undef, ...)
+nd_range_kernel (OpenCL::Queue self, OpenCL::Kernel kernel, SV *global_work_offset, SV *global_work_size, SV *local_work_size = &PL_sv_undef, ...)
+	ALIAS:
+	enqueue_nd_range_kernel = 0
 	PPCODE:
 	cl_event ev = 0;
         size_t *gwo = 0, *gws, *lws = 0;
@@ -1263,12 +1543,14 @@ enqueue_nd_range_kernel (OpenCL::Queue self, OpenCL::Kernel kernel, SV *global_w
         NEED_SUCCESS (EnqueueNDRangeKernel, (self, kernel, gws_len, gwo, gws, lws, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 #if cl_apple_gl_sharing || cl_khr_gl_sharing
 
 void
-enqueue_acquire_gl_objects (OpenCL::Queue self, SV *objects, ...)
+acquire_gl_objects (OpenCL::Queue self, SV *objects, ...)
+	ALIAS:
+	enqueue_acquire_gl_objects = 0
         ALIAS:
         enqueue_release_gl_objects = 1
 	PPCODE:
@@ -1283,7 +1565,7 @@ enqueue_acquire_gl_objects (OpenCL::Queue self, SV *objects, ...)
         int i;
 
         for (i = num_objects; i--; )
-          object_list [i] = SvPTROBJ ("OpenCL::Queue::enqueue_acquire/release_gl_objects", "objects", *av_fetch (av, i, 0), "OpenCL::Memory");
+          object_list [i] = SvCLOBJ ("OpenCL::Queue::enqueue_acquire/release_gl_objects", "objects", *av_fetch (av, i, 0), "OpenCL::Memory");
 
         if (ix)
           NEED_SUCCESS (EnqueueReleaseGLObjects, (self, num_objects, object_list, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
@@ -1291,12 +1573,14 @@ enqueue_acquire_gl_objects (OpenCL::Queue self, SV *objects, ...)
           NEED_SUCCESS (EnqueueAcquireGLObjects, (self, num_objects, object_list, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 #endif
 
 void
-enqueue_wait_for_events (OpenCL::Queue self, ...)
+wait_for_events (OpenCL::Queue self, ...)
+	ALIAS:
+	enqueue_wait_for_events = 0
 	CODE:
         EVENT_LIST (1, items - 1);
 #if PREFER_1_1
@@ -1306,7 +1590,9 @@ enqueue_wait_for_events (OpenCL::Queue self, ...)
 #endif
 
 void
-enqueue_marker (OpenCL::Queue self, ...)
+marker (OpenCL::Queue self, ...)
+	ALIAS:
+	enqueue_marker = 0
 	PPCODE:
 	cl_event ev = 0;
         EVENT_LIST (1, items - 1);
@@ -1326,10 +1612,12 @@ enqueue_marker (OpenCL::Queue self, ...)
         NEED_SUCCESS (EnqueueMarkerWithWaitList, (self, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 #endif
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
-enqueue_barrier (OpenCL::Queue self, ...)
+barrier (OpenCL::Queue self, ...)
+	ALIAS:
+	enqueue_barrier = 0
 	PPCODE:
 	cl_event ev = 0;
         EVENT_LIST (1, items - 1);
@@ -1352,7 +1640,7 @@ enqueue_barrier (OpenCL::Queue self, ...)
         NEED_SUCCESS (EnqueueBarrierWithWaitList, (self, event_list_count, event_list_ptr, GIMME_V != G_VOID ? &ev : 0));
 #endif
         if (ev)
-          XPUSH_NEW_OBJ ("OpenCL::Event", ev);
+          XPUSH_CLOBJ ("OpenCL::Event", ev);
 
 void
 flush (OpenCL::Queue self)
@@ -1380,7 +1668,7 @@ context (OpenCL::Queue self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 void
@@ -1391,7 +1679,7 @@ device (OpenCL::Queue self)
  EXTEND (SP, 1);
  const int i = 0;
  {
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+   PUSH_CLOBJ ("OpenCL::Device", value [i]);
  }
 
 void
@@ -1488,7 +1776,7 @@ context (OpenCL::Memory self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 void
@@ -1500,7 +1788,7 @@ associated_memobject (OpenCL::Memory self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainMemObject, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Memory", value [i]));
+   PUSH_CLOBJ ("OpenCL::Memory", value [i]);
  }
 
 #END:mem
@@ -1530,7 +1818,7 @@ sub_buffer_region (OpenCL::BufferObj self, cl_mem_flags flags, size_t origin, si
         cl_buffer_region crdata = { origin, size };
         
         NEED_SUCCESS_ARG (cl_mem mem, CreateSubBuffer, (self, flags, CL_BUFFER_CREATE_TYPE_REGION, &crdata, &res));
-        XPUSH_NEW_OBJ ("OpenCL::Buffer", mem);
+        XPUSH_CLOBJ ("OpenCL::Buffer", mem);
 
 MODULE = OpenCL		PACKAGE = OpenCL::Image
 
@@ -1626,7 +1914,7 @@ context (OpenCL::Sampler self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 void
@@ -1666,9 +1954,43 @@ DESTROY (OpenCL::Program self)
         clReleaseProgram (self);
 
 void
-build (OpenCL::Program self, OpenCL::Device device, SV *options = &PL_sv_undef)
+build (OpenCL::Program self, SV *devices = &PL_sv_undef, SV *options = &PL_sv_undef, SV *notify = &PL_sv_undef)
+	ALIAS:
+        build_async = 1
 	CODE:
-        NEED_SUCCESS (BuildProgram, (self, 1, &device, SvPVbyte_nolen (options), 0, 0));
+        void (CL_CALLBACK *pfn_notify)(cl_program program, void *user_data) = 0;
+        void *user_data = 0;
+        cl_uint num_devices = 0;
+        cl_device_id *device_list = 0;
+
+        if (SvOK (devices))
+	  {
+            if (!SvROK (devices) || SvTYPE (SvRV (devices)) != SVt_PVAV)
+              croak ("clProgramBuild: devices must be undef or an array of OpenCL::Device objects.");
+
+            AV *av = (AV *)SvRV (devices);
+            num_devices = av_len (av) + 1;
+
+            if (num_devices)
+              {
+                device_list = tmpbuf (sizeof (*device_list) * num_devices);
+                int count;
+                for (count = 0; count < num_devices; ++count)
+                  device_list [count] = SvCLOBJ ("clBuildProgram", "devices", *av_fetch (av, count, 1), "OpenCL::Device");
+              }
+          }
+
+        if (SvOK (notify))
+          {
+            NEED_SUCCESS (RetainProgram, (self));
+            pfn_notify = eq_program_notify;
+            user_data = SvREFCNT_inc (s_get_cv (notify));
+          }
+
+	if (ix)
+          build_program_async (self, num_devices, device_list, SvPVbyte_nolen (options), user_data);
+        else
+          NEED_SUCCESS (BuildProgram, (self, num_devices, device_list, SvPVbyte_nolen (options), pfn_notify, user_data));
 
 void
 build_info (OpenCL::Program self, OpenCL::Device device, cl_program_build_info name)
@@ -1713,7 +2035,7 @@ void
 kernel (OpenCL::Program program, SV *function)
 	PPCODE:
 	NEED_SUCCESS_ARG (cl_kernel kernel, CreateKernel, (program, SvPVbyte_nolen (function), &res));
-        XPUSH_NEW_OBJ ("OpenCL::Kernel", kernel);
+        XPUSH_CLOBJ ("OpenCL::Kernel", kernel);
 
 void
 kernels_in_program (OpenCL::Program program)
@@ -1726,7 +2048,7 @@ kernels_in_program (OpenCL::Program program)
         int i;
         EXTEND (SP, num_kernels);
         for (i = 0; i < num_kernels; ++i)
-          PUSHs (NEW_MORTAL_OBJ ("OpenCL::Kernel", kernels [i]));
+          PUSH_CLOBJ ("OpenCL::Kernel", kernels [i]);
 
 void
 info (OpenCL::Program self, cl_program_info name)
@@ -1784,7 +2106,7 @@ context (OpenCL::Program self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 void
@@ -1798,7 +2120,7 @@ devices (OpenCL::Program self)
  EXTEND (SP, n);
  for (i = 0; i < n; ++i)
  {
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Device", value [i]));
+   PUSH_CLOBJ ("OpenCL::Device", value [i]);
  }
 
 void
@@ -1832,6 +2154,67 @@ void
 DESTROY (OpenCL::Kernel self)
 	CODE:
         clReleaseKernel (self);
+
+void
+setf (OpenCL::Kernel self, const char *format, ...)
+	CODE:
+        int i;
+        for (i = 2; ; ++i)
+          {
+            while (*format == ' ')
+              ++format;
+
+            char type = *format++;
+
+            if (!type)
+              break;
+
+            if (i >= items)
+              croak ("OpenCL::Kernel::setf format string too long (not enough arguments)");
+
+            SV *sv = ST (i);
+
+            union
+            {
+              cl_char    cc; cl_uchar   cC; cl_short   cs; cl_ushort  cS;
+              cl_int     ci; cl_uint    cI; cl_long    cl; cl_ulong   cL;
+              cl_half    ch; cl_float   cf; cl_double  cd;
+              cl_mem     cm;
+              cl_sampler ca;
+              size_t     cz;
+              cl_event   ce;
+            } arg;
+            size_t size;
+
+            switch (type)
+              {
+                case 'c': arg.cc = SvIV (sv); size = sizeof (arg.cc); break;
+                case 'C': arg.cC = SvUV (sv); size = sizeof (arg.cC); break;
+                case 's': arg.cs = SvIV (sv); size = sizeof (arg.cs); break;
+                case 'S': arg.cS = SvUV (sv); size = sizeof (arg.cS); break;
+                case 'i': arg.ci = SvIV (sv); size = sizeof (arg.ci); break;
+                case 'I': arg.cI = SvUV (sv); size = sizeof (arg.cI); break;
+                case 'l': arg.cl = SvIV (sv); size = sizeof (arg.cl); break;
+                case 'L': arg.cL = SvUV (sv); size = sizeof (arg.cL); break;
+
+                case 'h': arg.ch = SvUV (sv); size = sizeof (arg.ch); break;
+                case 'f': arg.cf = SvNV (sv); size = sizeof (arg.cf); break;
+                case 'd': arg.cd = SvNV (sv); size = sizeof (arg.cd); break;
+                case 'z': arg.cz = SvUV (sv); size = sizeof (arg.cz); break;
+
+                case 'm': arg.cm = SvCLOBJ ("OpenCL::Kernel::setf", "m", sv, "OpenCL::Memory" ); size = sizeof (arg.cm); break;
+                case 'a': arg.ca = SvCLOBJ ("OpenCL::Kernel::setf", "a", sv, "OpenCL::Sampler"); size = sizeof (arg.ca); break;
+                case 'e': arg.ca = SvCLOBJ ("OpenCL::Kernel::setf", "e", sv, "OpenCL::Event"  ); size = sizeof (arg.ce); break;
+
+                default:
+                  croak ("OpenCL::Kernel::setf format character '%c' not supported", type);
+              }
+
+            clSetKernelArg (self, i - 2, size, &arg);
+          }
+
+        if (i != items)
+          croak ("OpenCL::Kernel::setf format string too short (too many arguments)");
 
 void
 set_char (OpenCL::Kernel self, cl_uint idx, cl_char value)
@@ -1899,12 +2282,10 @@ set_buffer (OpenCL::Kernel self, cl_uint idx, OpenCL::Buffer_ornull value)
         clSetKernelArg (self, idx, sizeof (value), &value);
 
 void
-set_image2d (OpenCL::Kernel self, cl_uint idx, OpenCL::Image2D_ornull value)
-	CODE:
-        clSetKernelArg (self, idx, sizeof (value), &value);
-
-void
-set_image3d (OpenCL::Kernel self, cl_uint idx, OpenCL::Image3D_ornull value)
+set_image (OpenCL::Kernel self, cl_uint idx, OpenCL::Image_ornull value)
+	ALIAS:
+        set_image2d = 0
+        set_image3d = 0
 	CODE:
         clSetKernelArg (self, idx, sizeof (value), &value);
 
@@ -1962,7 +2343,7 @@ context (OpenCL::Kernel self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 void
@@ -1974,7 +2355,7 @@ program (OpenCL::Kernel self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainProgram, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Program", value [i]));
+   PUSH_CLOBJ ("OpenCL::Program", value [i]);
  }
 
 #END:kernel
@@ -2044,6 +2425,11 @@ wait (OpenCL::Event self)
 	clWaitForEvents (1, &self);
 
 void
+cb (OpenCL::Event self, cl_int command_exec_callback_type, SV *cb)
+	CODE:
+        clSetEventCallback (self, command_exec_callback_type, eq_event_notify, SvREFCNT_inc (s_get_cv (cb)));
+
+void
 info (OpenCL::Event self, cl_event_info name)
 	PPCODE:
         INFO (Event)
@@ -2059,7 +2445,7 @@ command_queue (OpenCL::Event self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainCommandQueue, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Queue", value [i]));
+   PUSH_CLOBJ ("OpenCL::Queue", value [i]);
  }
 
 void
@@ -2092,7 +2478,7 @@ context (OpenCL::Event self)
  const int i = 0;
  {
    NEED_SUCCESS (RetainContext, (value [i]));
-   PUSHs (NEW_MORTAL_OBJ ("OpenCL::Context", value [i]));
+   PUSH_CLOBJ ("OpenCL::Context", value [i]);
  }
 
 #END:event

@@ -193,7 +193,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
 
          $XS2 .= " {\n";
          $XS2 .= "   NEED_SUCCESS (Retain$oclass, (value [i]));\n" unless $1 eq "Platform" || $1 eq "Device";
-         $XS2 .= "   PUSHs (NEW_MORTAL_OBJ (\"$type->[1]\", value [i]));\n";
+         $XS2 .= "   PUSH_CLOBJ (\"$type->[1]\", value [i]);\n";
          $XS2 .= " }\n";
       } else {
          $XS2 .= " PUSHs (sv_2mortal ($type->[1]));\n";

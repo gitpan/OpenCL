@@ -7,12 +7,32 @@ TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueUnmapMe
 TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapBuffer.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapImage.html
 TODO: some convenience methods maybe?
+TODO: OpenCL::context
+TODO: async $cty->build
+TODO: remove set_image23d
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCompileProgram.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clLinkProgram.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateProgramWithBuiltInKernels.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateSubDevices.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueMigrateMemObjects.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clGetKernelArgInfo.html (also generic accessor)
+
+0.98 Sat Apr 28 15:31:46 CEST 2012
+	- INCOMPATIBLE CHANGE: $prog->build now wants an array of devices, or undef.
+        - INCOMPATIBLE CHANGE: $queue->enqueue_xxx methods have been renamed to just
+          $queue->xxx, the enqueue_ prefix has been deprecated.
+        - INCOMPATIBLE CHANGE: use ->set_image to set kernel args, ->image[23]d have
+          been deprecated.
+        - new $kernel->setf function to set kernel arguments in one go.
+        - (optional, automatic) anyevent integration.
+        - implement an event queue, use Async::Interrupt for communication.
+        - implement context notification callbacks (untested).
+	- provide a default context notification function that prints to stderr.
+        - implement event callback notifications.
+        - implement build program notifications.
+        - implement an asynchronous program build function.
+        - $ctx->build_program now distinguishes between wrong build invocations
+          and build failures.
 
 0.97 Tue Apr 24 16:56:21 CEST 2012
 	- created $ctx->build_program utility function.

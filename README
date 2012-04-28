@@ -41,19 +41,22 @@ DESCRIPTION
     OpenCL::Event objects are used to signal when something is complete.
 
   HELPFUL RESOURCES
-    The OpenCL spec used to develop this module (1.2 spec was available, but
-    no implementation was available to me :).
+    The OpenCL specs used to develop this module:
 
        http://www.khronos.org/registry/cl/specs/opencl-1.1.pdf
+       http://www.khronos.org/registry/cl/specs/opencl-1.2.pdf
+       http://www.khronos.org/registry/cl/specs/opencl-1.2-extensions.pdf
 
     OpenCL manpages:
 
        http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/
+       http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/
 
     If you are into UML class diagrams, the following diagram might help -
-    if not, it will be mildly cobfusing:
+    if not, it will be mildly confusing (also, the class hierarchy of this
+    module is much more fine-grained):
 
-       http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/classDiagram.html
+       http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/classDiagram.html
 
     Here's a tutorial from AMD (very AMD-centric, too), not sure how useful
     it is, but at least it's free of charge:
@@ -130,10 +133,10 @@ EXAMPLES
 then asynchronously.
        my $buf = $ctx->buffer_sv (OpenCL::MEM_COPY_HOST_PTR, "helmut");
 
-       $queue->enqueue_read_buffer ($buf, 1, 1, 3, my $data);
+       $queue->read_buffer ($buf, 1, 1, 3, my $data);
        print "$data\n";
 
-       my $ev = $queue->enqueue_read_buffer ($buf, 0, 1, 3, my $data);
+       my $ev = $queue->read_buffer ($buf, 0, 1, 3, my $data);
        $ev->wait;
        print "$data\n"; # prints "elm"
 
@@ -161,10 +164,10 @@ functions.
        $kernel->set_buffer (1, $output);
 
        # execute it for all 4 numbers
-       $queue->enqueue_nd_range_kernel ($kernel, undef, [4], undef);
+       $queue->nd_range_kernel ($kernel, undef, [4], undef);
 
        # enqueue a synchronous read
-       $queue->enqueue_read_buffer ($output, 1, 0, OpenCL::SIZEOF_FLOAT * 4, my $data);
+       $queue->read_buffer ($output, 1, 0, OpenCL::SIZEOF_FLOAT * 4, my $data);
 
        # print the results:
        printf "%s\n", join ", ", unpack "f*", $data;
@@ -172,13 +175,13 @@ functions.
   The same enqueue operations as before, but assuming an out-of-order queue,
 showing off barriers.
        # execute it for all 4 numbers
-       $queue->enqueue_nd_range_kernel ($kernel, undef, [4], undef);
+       $queue->nd_range_kernel ($kernel, undef, [4], undef);
 
        # enqueue a barrier to ensure in-order execution
-       $queue->enqueue_barrier;
+       $queue->barrier;
 
        # enqueue an async read
-       $queue->enqueue_read_buffer ($output, 0, 0, OpenCL::SIZEOF_FLOAT * 4, my $data);
+       $queue->read_buffer ($output, 0, 0, OpenCL::SIZEOF_FLOAT * 4, my $data);
 
        # wait for all requests to finish
        $queue->finish;
@@ -186,10 +189,10 @@ showing off barriers.
   The same enqueue operations as before, but assuming an out-of-order queue,
 showing off event objects and wait lists.
        # execute it for all 4 numbers
-       my $ev = $queue->enqueue_nd_range_kernel ($kernel, undef, [4], undef);
+       my $ev = $queue->nd_range_kernel ($kernel, undef, [4], undef);
 
        # enqueue an async read
-       $ev = $queue->enqueue_read_buffer ($output, 0, 0, OpenCL::SIZEOF_FLOAT * 4, my $data, $ev);
+       $ev = $queue->read_buffer ($output, 0, 0, OpenCL::SIZEOF_FLOAT * 4, my $data, $ev);
 
        # wait for the last event to complete
        $ev->wait;
@@ -257,15 +260,15 @@ set tunnel effect.
 
        for (my $time; ; ++$time) {
           # acquire objects from opengl
-          $queue->enqueue_acquire_gl_objects ([$tex]);
+          $queue->acquire_gl_objects ([$tex]);
 
           # configure and run our kernel
           $kernel->set_image2d (0, $tex);
           $kernel->set_float   (1, $time);
-          $queue->enqueue_nd_range_kernel ($kernel, undef, [256, 256], undef);
+          $queue->nd_range_kernel ($kernel, undef, [256, 256], undef);
 
           # release objects to opengl again
-          $queue->enqueue_release_gl_objects ([$tex]);
+          $queue->release_gl_objects ([$tex]);
 
           # wait
           $queue->finish;
@@ -355,13 +358,120 @@ DOCUMENTATION
     have been created and be made current, and "dlsym" must be available and
     capable of finding the function via "RTLD_DEFAULT".
 
+  EVENT SYSTEM
+    OpenCL can generate a number of (potentially) asynchronous events, for
+    example, after compiling a program, to signal a context-related error
+    or, perhaps most important, to signal completion of queued jobs (by
+    setting callbacks on OpenCL::Event objects).
+
+    To facilitate this, this module maintains an event queue - each time an
+    asynchronous event happens, it is queued, and perl will be interrupted.
+    This is implemented via the Async::Interrupt module. In addition, this
+    module has AnyEvent support, so it can seamlessly integrate itself into
+    many event loops.
+
+    Since this module is a bit hard to understand, here are some case
+    examples:
+
+   Don't use callbacks.
+    When your program never uses any callbacks, then there will never be any
+    notifications you need to take care of, and therefore no need to worry
+    about all this.
+
+    You can achieve a great deal by explicitly waiting for events, or using
+    barriers and flush calls. In many programs, there is no need at all to
+    tinker with asynchronous events.
+
+   Use AnyEvent
+    This module automatically registers a watcher that invokes all
+    outstanding event callbacks when AnyEvent is initialised (and block
+    asynchronous interruptions). Using this mode of operations is the safest
+    and most recommended one.
+
+    To use this, simply use AnyEvent and this module normally, make sure you
+    have an event loop running:
+
+       use Gtk2 -init;
+       use AnyEvent;
+
+       # initialise AnyEvent, by creating a watcher, or:
+       AnyEvent::detect;
+
+       my $e = $queue->marker;
+       $e->cb (sub {
+          warn "opencl is finished\n";
+       })
+
+       main Gtk2;
+
+    Note that this module will not initialise AnyEvent for you. Before
+    AnyEvent is initialised, the module will asynchronously interrupt perl
+    instead. To avoid any surprises, it's best to explicitly initialise
+    AnyEvent.
+
+    You can temporarily enable asynchronous interruptions (see next
+    paragraph) by calling "$OpenCL::INTERRUPT-"unblock> and disable them
+    again by calling "$OpenCL::INTERRUPT-"block>.
+
+   Let yourself be interrupted at any time
+    This mode is the default unless AnyEvent is loaded and initialised. In
+    this mode, OpenCL asynchronously interrupts a running perl program. The
+    emphasis is on both *asynchronously* and *running* here.
+
+    Asynchronously means that perl might execute your callbacks at any time.
+    For example, in the following code (*THAT YOU SHOULD NOT COPY*), the
+    "until" loop following the marker call will be interrupted by the
+    callback:
+
+       my $e = $queue->marker;
+       my $flag;
+       $e->cb (sub { $flag = 1 });
+       1 until $flag;
+       # $flag is now 1
+
+    The reason why you shouldn't blindly copy the above code is that busy
+    waiting is a really really bad thing, and really really bad for
+    performance.
+
+    While at first this asynchronous business might look exciting, it can be
+    really hard, because you need to be prepared for the callback code to be
+    executed at any time, which limits the amount of things the callback
+    code can do safely.
+
+    This can be mitigated somewhat by using
+    "$OpenCL::INTERRUPT->scope_block" (see the Async::Interrupt
+    documentation for details).
+
+    The other problem is that your program must be actively *running* to be
+    interrupted. When you calculate stuff, your program is running. When you
+    hang in some C functions or other block execution (by calling "sleep",
+    "select", running an event loop and so on), your program is waiting, not
+    running.
+
+    One way around that would be to attach a read watcher to your event
+    loop, listening for events on "$OpenCL::INTERRUPT->pipe_fileno", using a
+    dummy callback ("sub { }") to temporarily execute some perl code.
+
+    That is then awfully close to using the built-in AnyEvent support above,
+    though, so consider that one instead.
+
+   Be creative
+    OpenCL exports the Async::Interrupt object it uses in the global
+    variable $OpenCL::INTERRUPT. You can configure it in any way you like.
+
+    So if you want to feel like a real pro, err, wait, if you feel no risk
+    menas no fun, you can experiment by implementing your own mode of
+    operations.
+
   THE OpenCL PACKAGE
     $int = OpenCL::errno
         The last error returned by a function - it's only valid after an
         error occured and before calling another OpenCL function.
 
-    $str = OpenCL::err2str $errval
-        Comverts an error value into a human readable string.
+    $str = OpenCL::err2str [$errval]
+        Converts an error value into a human readable string. IF no error
+        value is given, then the last error will be used (as returned by
+        OpenCL::errno).
 
     $str = OpenCL::enum2str $enum
         Converts most enum values (of parameter names, image format
@@ -377,18 +487,40 @@ DOCUMENTATION
         formIDs.html>
 
     $ctx = OpenCL::context_from_type $properties, $type =
-    OpenCL::DEVICE_TYPE_DEFAULT, $notify = undef
-        Tries to create a context from a default device and platform - never
-        worked for me.
+    OpenCL::DEVICE_TYPE_DEFAULT, $callback->($err, $pvt) = $print_stderr
+        Tries to create a context from a default device and platform type -
+        never worked for me.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateC
         ontextFromType.html>
+
+    $ctx = OpenCL::context $properties, \@devices, $callback->($err, $pvt) =
+    $print_stderr)
+        Create a new OpenCL::Context object using the given device
+        object(s). This function isn't implemented yet, use
+        "$platform->context" instead.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateC
+        ontext.html>
 
     OpenCL::wait_for_events $wait_events...
         Waits for all events to complete.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clWaitFor
         Events.html>
+
+    OpenCL::poll
+        Checks if there are any outstanding events (see "EVENT SYSTEM") and
+        invokes their callbacks.
+
+    $OpenCL::INTERRUPT
+        The Async::Interrupt object used to signal asynchronous events (see
+        "EVENT SYSTEM").
+
+    $OpenCL::WATCHER
+        The AnyEvent watcher object used to watch for asynchronous events
+        (see "EVENT SYSTEM"). This variable is "undef" until AnyEvent has
+        been loaded *and* initialised (e.g. by calling "AnyEvent::detect").
 
   THE OpenCL::Object CLASS
     This is the base class for all objects in the OpenCL module. The only
@@ -407,15 +539,15 @@ DOCUMENTATION
         Returns a list of matching OpenCL::Device objects.
 
     $ctx = $platform->context_from_type ($properties, $type =
-    OpenCL::DEVICE_TYPE_DEFAULT, $notify = undef)
+    OpenCL::DEVICE_TYPE_DEFAULT, $callback->($err, $pvt) = $print_stderr)
         Tries to create a context. Never worked for me, and you need devices
         explicitly anyway.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateC
         ontextFromType.html>
 
-    $ctx = $platform->context ($properties = undef, @$devices, $notify =
-    undef)
+    $ctx = $platform->context ($properties, \@devices, $callback->($err,
+    $pvt) = $print_stderr)
         Create a new OpenCL::Context object using the given device
         object(s)- a CL_CONTEXT_PLATFORM property is supplied automatically.
 
@@ -770,8 +902,9 @@ DOCUMENTATION
         initialise it with the given data values.
 
     $img = $ctx->image ($self, $flags, $channel_order, $channel_type, $type,
-    $width, $height, $depth, $array_size = 0, $row_pitch = 0, $slice_pitch =
-    0, $num_mip_level = 0, $num_samples = 0, $*data = &PL_sv_undef)
+    $width, $height, $depth = 0, $array_size = 0, $row_pitch = 0,
+    $slice_pitch = 0, $num_mip_level = 0, $num_samples = 0, $*data =
+    &PL_sv_undef)
         Creates a new OpenCL::Image object and optionally initialises it
         with the given data values.
 
@@ -873,12 +1006,13 @@ DOCUMENTATION
 
   THE OpenCL::Queue CLASS
     An OpenCL::Queue represents an execution queue for OpenCL. You execute
-    requests by calling their respective "enqueue_xxx" method and waitinf
-    for it to complete in some way.
+    requests by calling their respective method and waiting for it to
+    complete in some way.
 
-    All the enqueue methods return an event object that can be used to wait
-    for completion, unless the method is called in void context, in which
-    case no event object is created.
+    Most methods that enqueue some request return an event object that can
+    be used to wait for completion (optionally using a callback), unless the
+    method is called in void context, in which case no event object is
+    created.
 
     They also allow you to specify any number of other event objects that
     this request has to wait for before it starts executing, by simply
@@ -887,91 +1021,90 @@ DOCUMENTATION
     list of events. This makes it possible to code operations such as this,
     without having to put a valid event object into $event first:
 
-       $event = $queue->enqueue_xxx (..., $event);
+       $event = $queue->xxx (..., $event);
 
     Queues execute in-order by default, without any parallelism, so in most
     cases (i.e. you use only one queue) it's not necessary to wait for or
     create event objects, althoguh an our of order queue is often a bit
     faster.
 
-    $ev = $queue->enqueue_read_buffer ($buffer, $blocking, $offset, $len,
-    $data, $wait_events...)
+    $ev = $queue->read_buffer ($buffer, $blocking, $offset, $len, $data,
+    $wait_events...)
         Reads data from buffer into the given string.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         ReadBuffer.html>
 
-    $ev = $queue->enqueue_write_buffer ($buffer, $blocking, $offset, $data,
+    $ev = $queue->write_buffer ($buffer, $blocking, $offset, $data,
     $wait_events...)
         Writes data to buffer from the given string.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         WriteBuffer.html>
 
-    $ev = $queue->enqueue_copy_buffer ($src, $dst, $src_offset, $dst_offset,
-    $len, $wait_events...)
+    $ev = $queue->copy_buffer ($src, $dst, $src_offset, $dst_offset, $len,
+    $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyBuffer.html>
 
-    $ev = $queue->enqueue_read_buffer_rect (OpenCL::Memory buf, cl_bool
-    blocking, $buf_x, $buf_y, $buf_z, $host_x, $host_y, $host_z, $width,
-    $height, $depth, $buf_row_pitch, $buf_slice_pitch, $host_row_pitch,
+    $ev = $queue->read_buffer_rect (OpenCL::Memory buf, cl_bool blocking,
+    $buf_x, $buf_y, $buf_z, $host_x, $host_y, $host_z, $width, $height,
+    $depth, $buf_row_pitch, $buf_slice_pitch, $host_row_pitch,
     $host_slice_pitch, $data, $wait_events...)
         http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueR
         eadBufferRect.html
 
-    $ev = $queue->enqueue_write_buffer_rect (OpenCL::Memory buf, cl_bool
-    blocking, $buf_x, $buf_y, $buf_z, $host_x, $host_y, $host_z, $width,
-    $height, $depth, $buf_row_pitch, $buf_slice_pitch, $host_row_pitch,
+    $ev = $queue->write_buffer_rect (OpenCL::Memory buf, cl_bool blocking,
+    $buf_x, $buf_y, $buf_z, $host_x, $host_y, $host_z, $width, $height,
+    $depth, $buf_row_pitch, $buf_slice_pitch, $host_row_pitch,
     $host_slice_pitch, $data, $wait_events...)
         http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueW
         riteBufferRect.html
 
-    $ev = $queue->enqueue_read_image ($src, $blocking, $x, $y, $z, $width,
-    $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
+    $ev = $queue->read_image ($src, $blocking, $x, $y, $z, $width, $height,
+    $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyBufferRect.html>
 
-    $ev = $queue->enqueue_copy_buffer_to_image ($src_buffer, $dst_image,
+    $ev = $queue->copy_buffer_to_image ($src_buffer, $dst_image,
     $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth,
     $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         ReadImage.html>
 
-    $ev = $queue->enqueue_write_image ($src, $blocking, $x, $y, $z, $width,
-    $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
+    $ev = $queue->write_image ($src, $blocking, $x, $y, $z, $width, $height,
+    $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         WriteImage.html>
 
-    $ev = $queue->enqueue_copy_image ($src_image, $dst_image, $src_x,
-    $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth,
+    $ev = $queue->copy_image ($src_image, $dst_image, $src_x, $src_y,
+    $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth,
     $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyImage.html>
 
-    $ev = $queue->enqueue_copy_image_to_buffer ($src_image, $dst_image,
-    $src_x, $src_y, $src_z, $width, $height, $depth, $dst_offset,
-    $wait_events...)
+    $ev = $queue->copy_image_to_buffer ($src_image, $dst_image, $src_x,
+    $src_y, $src_z, $width, $height, $depth, $dst_offset, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyImageToBuffer.html>
 
-    $ev = $queue->enqueue_copy_buffer_rect ($src, $dst, $src_x, $src_y,
-    $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch,
+    $ev = $queue->copy_buffer_rect ($src, $dst, $src_x, $src_y, $src_z,
+    $dst_x, $dst_y, $dst_z, $width, $height, $depth, $src_row_pitch,
     $src_slice_pitch, $dst_row_pitch, $dst_slice_pitch, $wait_event...)
         Yeah.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         CopyBufferToImage.html>.
 
-    $ev = $queue->enqueue_fill_buffer ($mem, $pattern, $offset, $size, ...)
+    $ev = $queue->fill_buffer ($mem, $pattern, $offset, $size, ...)
         Fills the given buffer object with repeated applications of
         $pattern, starting at $offset for $size octets.
 
         <http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueue
         FillBuffer.html>
 
-    $ev = $queue->enqueue_fill_image ($img, $r, $g, $b, $a, $x, $y, $z,
-    $width, $height, $depth, ...)
+    $ev = $queue->fill_image ($img, $r, $g, $b, $a, $x, $y, $z, $width,
+    $height, $depth, ...)
         Fills the given image area with the given rgba colour components.
         The components are normally floating point values between 0 and 1,
         except when the image channel data type is a signe dor unsigned
@@ -981,54 +1114,52 @@ DOCUMENTATION
         <http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueue
         FillImage.html>
 
-    $ev = $queue->enqueue_task ($kernel, $wait_events...)
+    $ev = $queue->task ($kernel, $wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         Task.html>
 
-    $ev = $queue->enqueue_nd_range_kernel ($kernel, @$global_work_offset,
-    @$global_work_size, @$local_work_size, $wait_events...)
+    $ev = $queue->nd_range_kernel ($kernel, \@global_work_offset,
+    \@global_work_size, \@local_work_size, $wait_events...)
         Enqueues a kernel execution.
 
-        @$global_work_size must be specified as a reference to an array of
+        \@global_work_size must be specified as a reference to an array of
         integers specifying the work sizes (element counts).
 
-        @$global_work_offset must be either "undef" (in which case all
+        \@global_work_offset must be either "undef" (in which case all
         offsets are 0), or a reference to an array of work offsets, with the
-        same number of elements as @$global_work_size.
+        same number of elements as \@global_work_size.
 
-        @$local_work_size must be either "undef" (in which case the
+        \@local_work_size must be either "undef" (in which case the
         implementation is supposed to choose good local work sizes), or a
         reference to an array of local work sizes, with the same number of
-        elements as @$global_work_size.
+        elements as \@global_work_size.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         NDRangeKernel.html>
 
-    $ev = $queue->enqueue_acquire_gl_objects ([object, ...],
-    $wait_events...)
+    $ev = $queue->acquire_gl_objects ([object, ...], $wait_events...)
         Enqueues a list (an array-ref of OpenCL::Memory objects) to be
         acquired for subsequent OpenCL usage.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         AcquireGLObjects.html>
 
-    $ev = $queue->enqueue_release_gl_objects ([object, ...],
-    $wait_events...)
+    $ev = $queue->release_gl_objects ([object, ...], $wait_events...)
         Enqueues a list (an array-ref of OpenCL::Memory objects) to be
         released for subsequent OpenGL usage.
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         ReleaseGLObjects.html>
 
-    $ev = $queue->enqueue_wait_for_events ($wait_events...)
+    $ev = $queue->wait_for_events ($wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueue
         WaitForEvents.html>
 
-    $ev = $queue->enqueue_marker ($wait_events...)
+    $ev = $queue->marker ($wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueue
         MarkerWithWaitList.html>
 
-    $ev = $queue->enqueue_barrier ($wait_events...)
+    $ev = $queue->barrier ($wait_events...)
         <http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueue
         BarrierWithWaitList.html>
 
@@ -1210,12 +1341,31 @@ DOCUMENTATION
         the result.
 
   THE OpenCL::Program CLASS
-    $program->build ($device, $options = "")
+    $program->build (\@devices = undef, $options = "", $cb->($program) =
+    undef)
         Tries to build the program with the given options. See also the
         "$ctx-"build> convenience function.
 
+        If a callback is specified, then it will be called when compilation
+        is finished. Note that many OpenCL implementations block your
+        program while compiling whether you use a callback or not. See
+        "build_async" if you want to make sure the build is done in the
+        background.
+
+        Note that some OpenCL implementations atc up badly, and don't call
+        the callback in some error cases (but call it in others). This
+        implementation assumes the callback will always be called, and leaks
+        memory if this is not so. So best make sure you don't pass in
+        invalid values.
+
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clBuildPr
         ogram.html>
+
+    $program->build_async (\@devices = undef, $options = "", $cb->($program)
+    = undef)
+        Similar to "->build", except it starts a thread, and never fails
+        (you need to check the compilation status form the callback, or by
+        polling).
 
     $packed_value = $program->build_info ($device, $name)
         Similar to "$platform->info", but returns build info for a previous
@@ -1348,19 +1498,70 @@ DOCUMENTATION
         Calls "clGetKernelWorkGroupInfo" with "CL_KERNEL_PRIVATE_MEM_SIZE"
         and returns the result.
 
+    $kernel->setf ($format, ...)
+        Sets the arguments of a kernel. Since OpenCL 1.1 doesn't have a
+        generic way to set arguments (and with OpenCL 1.2 it might be rather
+        slow), you need to specify a format argument, much as with "printf",
+        to tell OpenCL what type of argument it is.
+
+        The format arguments are single letters:
+
+           c   char
+           C   unsigned char
+           s   short
+           S   unsigned short
+           i   int
+           I   unsigned int
+           l   long
+           L   unsigned long
+
+           h   half float (0..65535)
+           f   float
+           d   double
+
+           z   local (octet size)
+
+           m   memory object (buffer or image)
+           a   sampler
+           e   event
+
+        Space characters in the format string are ignored.
+
+        Example: set the arguments for a kernel that expects an int, two
+        floats, a buffer and an image.
+
+           $kernel->setf ("i ff mm", 5, 0.5, 3, $buffer, $image);
+
     $kernel->set_TYPE ($index, $value)
+    $kernel->set_char ($index, $value)
+    $kernel->set_uchar ($index, $value)
+    $kernel->set_short ($index, $value)
+    $kernel->set_ushort ($index, $value)
+    $kernel->set_int ($index, $value)
+    $kernel->set_uint ($index, $value)
+    $kernel->set_long ($index, $value)
+    $kernel->set_ulong ($index, $value)
+    $kernel->set_half ($index, $value)
+    $kernel->set_float ($index, $value)
+    $kernel->set_double ($index, $value)
+    $kernel->set_memory ($index, $value)
+    $kernel->set_buffer ($index, $value)
+    $kernel->set_image ($index, $value)
+    $kernel->set_sampler ($index, $value)
+    $kernel->set_local ($index, $value)
+    $kernel->set_event ($index, $value)
         This is a family of methods to set the kernel argument with the
         number $index to the give $value.
 
-        TYPE is one of "char", "uchar", "short", "ushort", "int", "uint",
-        "long", "ulong", "half", "float", "double", "memory", "buffer",
-        "image2d", "image3d", "sampler", "local" or "event".
-
         Chars and integers (including the half type) are specified as
         integers, float and double as floating point values,
-        memory/buffer/image2d/image3d must be an object of that type or
-        "undef", local-memory arguments are set by specifying the size, and
-        sampler and event must be objects of that type.
+        memory/buffer/image must be an object of that type or "undef",
+        local-memory arguments are set by specifying the size, and sampler
+        and event must be objects of that type.
+
+        Note that "set_memory" works for all memory objects (all types of
+        buffers and images) - the main purpose of the more specific
+        "set_TYPE" functions is type checking.
 
         Setting an argument for a kernel does NOT keep a reference to the
         object - for example, if you set an argument to some image object,
@@ -1379,6 +1580,14 @@ DOCUMENTATION
 
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clWaitFor
         Events.html>
+
+    $ev->cb ($exec_callback_type, $callback->($event,
+    $event_command_exec_status))
+        Adds a callback to the callback stack for the given event type.
+        There is no way to remove a callback again.
+
+        <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetEven
+        tCallback.html>
 
     $packed_value = $ev->info ($name)
         See "$platform->info" for details.
@@ -1435,6 +1644,9 @@ DOCUMENTATION
     This is a subclass of OpenCL::Event.
 
     $ev->set_status ($execution_status)
+        Sets the execution status of the user event. Can only be called
+        once, either with OpenCL::COMPLETE or a negative number as status.
+
         <http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetUser
         EventStatus.html>
 

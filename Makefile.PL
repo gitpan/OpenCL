@@ -26,12 +26,12 @@ WriteMakefile(
 	            SUFFIX	=> '.gz',
 	           },
     PREREQ_PM => {
-       common::sense    => 0,
-#       Async::Interrupt => 0,
+       common::sense    => 3,
+       Async::Interrupt => 1.1,
     },
     DEFINE => $DEFINE,
     NAME => "OpenCL",
     VERSION_FROM => "OpenCL.pm",
-    LIBS => ["-lOpenCL"],
+    LIBS => ["-lOpenCL -lpthread"],
 );
 

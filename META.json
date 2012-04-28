@@ -32,10 +32,11 @@
       },
       "runtime" : {
          "requires" : {
-            "common::sense" : 0
+            "Async::Interrupt" : "1.1",
+            "common::sense" : "3"
          }
       }
    },
    "release_status" : "stable",
-   "version" : "0.97"
+   "version" : "0.98"
 }
