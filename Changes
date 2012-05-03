@@ -1,14 +1,8 @@
 Revision history for Perl extension OpenCL.
 
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithBinary.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetEventCallback.html, *pfn
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetMemObjectDestructorCallback.html, *pfn
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueUnmapMemObject.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapBuffer.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapImage.html
+TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetMemObjectDestructorCallback.html
 TODO: some convenience methods maybe?
 TODO: OpenCL::context
-TODO: async $cty->build
 TODO: remove set_image23d
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCompileProgram.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clLinkProgram.html
@@ -16,6 +10,31 @@ TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateProgramW
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateSubDevices.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueMigrateMemObjects.html
 TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clGetKernelArgInfo.html (also generic accessor)
+
+0.99 Fri May  4 01:31:15 CEST 2012
+	- OpenCL 1.1 is now effectively feature complete.
+	- work around a bug in the nvidia implementation, where build fails with
+          INVALID_BINARY if the compiler runs succesfully but ptxas fails.
+        - explicitly check for 0 size dimensions in nd_range_kernel, as nvidia
+          crashes (and OpenCL probably allows this behaviour).
+        - actually report clSetKernelArg errors in ("OpenCL::Kernel::setf.
+        - setf properly can now properly set local arguments ('z').
+        - using undef to pass null memory buffers now works in set_xxx.
+        - release_gl_texture was missing.
+        - fix/improve/balance gl sharing example.
+        - added non-opengl sharing opengl example.
+        - fixed some documentation links.
+        - fixed a bug where enqueue operations with optional parameters at the
+          end not specified would crash.
+        - implemented clEnqueueMapBuffer/Image/UnmapMemObject, and a "mapped object"
+          abstraction.
+        - both context_from_type methods now properly pass the notify callback.
+        - $platform->context now properly passes CL_CONTEXT_PLATFORM again.
+        - implement clCreateProgramWithBinary.
+        - speed up object constructions by not looking up stashes.
+        - use libebc for fine-tuning.
+        - reduce codesize considerably by disabling inlining on some functions.
+        - speed up many method calls on objects with no subclasses.
 
 0.98 Sat Apr 28 15:31:46 CEST 2012
 	- INCOMPATIBLE CHANGE: $prog->build now wants an array of devices, or undef.

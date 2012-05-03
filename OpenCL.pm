@@ -214,16 +214,19 @@ showing off event objects and wait lists.
 =head2 Use the OpenGL module to share a texture between OpenCL and OpenGL and draw some julia
 set tunnel effect.
 
-This is quite a long example to get you going.
+This is quite a long example to get you going - you can download it from
+L<http://cvs.schmorp.de/OpenCL/examples/juliaflight>.
 
    use OpenGL ":all";
    use OpenCL;
 
+   my $S = $ARGV[0] || 256; # window/texture size, smaller is faster
+
    # open a window and create a gl texture
-   OpenGL::glpOpenWindow width => 256, height => 256;
+   OpenGL::glpOpenWindow width => $S, height => $S;
    my $texid = glGenTextures_p 1;
    glBindTexture GL_TEXTURE_2D, $texid;
-   glTexImage2D_c GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0;
+   glTexImage2D_c GL_TEXTURE_2D, 0, GL_RGBA8, $S, $S, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0;
 
    # find and use the first opencl device that let's us get a shared opengl context
    my $platform;
@@ -252,19 +255,20 @@ This is quite a long example to get you going.
    kernel void
    juliatunnel (write_only image2d_t img, float time)
    {
-     float2 p = (float2)(get_global_id (0), get_global_id (1)) / 256.f * 2.f - 1.f;
+     int2 xy = (int2)(get_global_id (0), get_global_id (1));
+     float2 p = convert_float2 (xy) / $S.f * 2.f - 1.f;
 
-     float2 m = (float2)(1.f, p.y) / fabs (p.x);
-     m.x = fabs (fmod (m.x + time * 0.05f, 4.f)) - 2.f;
+     float2 m = (float2)(1.f, p.y) / fabs (p.x); // tunnel
+     m.x = fabs (fmod (m.x + time * 0.05f, 4.f) - 2.f);
 
      float2 z = m;
-     float2 c = (float2)(sin (time * 0.05005), cos (time * 0.06001));
+     float2 c = (float2)(sin (time * 0.01133f), cos (time * 0.02521f));
 
-     for (int i = 0; i < 25 && dot (z, z) < 4.f; ++i)
+     for (int i = 0; i < 25 && dot (z, z) < 4.f; ++i) // standard julia
        z = (float2)(z.x * z.x - z.y * z.y, 2.f * z.x * z.y) + c;
 
-     float3 colour = (float3)(z.x, z.y, z.x * z.y);
-     write_imagef (img, (int2)(get_global_id (0), get_global_id (1)), (float4)(colour * p.x * p.x, 1.));
+     float3 colour = (float3)(z.x, z.y, atan2 (z.y, z.x));
+     write_imagef (img, xy, (float4)(colour * p.x * p.x, 1.));
    }
    EOF
 
@@ -278,9 +282,8 @@ This is quite a long example to get you going.
       $queue->acquire_gl_objects ([$tex]);
 
       # configure and run our kernel
-      $kernel->set_image2d (0, $tex);
-      $kernel->set_float   (1, $time);
-      $queue->nd_range_kernel ($kernel, undef, [256, 256], undef);
+      $kernel->setf ("mf", $tex, $time*2); # mf = memory object, float
+      $queue->nd_range_kernel ($kernel, undef, [$S, $S], undef);
 
       # release objects to opengl again
       $queue->release_gl_objects ([$tex]);
@@ -303,6 +306,33 @@ This is quite a long example to get you going.
 
       select undef, undef, undef, 1/60;
    }
+
+=head2 How to modify the previous example to not rely on GL sharing.
+
+For those poor souls with only a sucky CPU OpenCL implementation, you
+currently have to read the image into some perl scalar, and then modify a
+texture or use glDrawPixels or so).
+
+First, when you don't need gl sharing, you can create the context much simpler:
+
+   $ctx = $platform->context (undef, [$dev])
+
+To use a texture, you would modify the above example by creating an
+OpenCL::Image manually instead of deriving it from a texture:
+
+   my $tex = $ctx->image2d (OpenCL::MEM_WRITE_ONLY, OpenCL::RGBA, OpenCL::UNORM_INT8, $S, $S);
+
+And in the darw loop, intead of acquire_gl_objects/release_gl_objects, you
+would read the image2d after the kernel has written it:
+
+   $queue->read_image ($tex, 0, 0, 0, 0, $S, $S, 1, 0, 0, my $data);
+
+And then you would upload the pixel data to the texture (or use glDrawPixels):
+
+   glTexSubImage2D_s GL_TEXTURE_2D, 0, 0, 0, $S, $S, GL_RGBA, GL_UNSIGNED_BYTE, $data;
+
+The fully modified example can be found at
+L<http://cvs.schmorp.de/OpenCL/examples/juliaflight-nosharing>.
 
 =head1 DOCUMENTATION
 
@@ -501,7 +531,7 @@ use Async::Interrupt ();
 our $POLL_FUNC; # set by XS
 
 BEGIN {
-   our $VERSION = '0.98';
+   our $VERSION = '0.99';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);
@@ -529,6 +559,9 @@ BEGIN {
    @OpenCL::Image1DBuffer::ISA = OpenCL::Image::;
 
    @OpenCL::UserEvent::ISA     = OpenCL::Event::;
+
+   @OpenCL::MappedBuffer::ISA  =
+   @OpenCL::MappedImage::ISA   = OpenCL::Mapped::;
 }
 
 =head2 THE OpenCL PACKAGE
@@ -1011,6 +1044,7 @@ sub OpenCL::Context::build_program {
 
    eval { $prog->build (undef, $options); 1 }
       or errno == BUILD_PROGRAM_FAILURE
+      or errno == INVALID_BINARY # workaround nvidia bug
       or Carp::croak "OpenCL::Context->build_program: " . err2str;
 
    # we check status for all devices
@@ -1126,6 +1160,17 @@ Creates a new OpenCL::Program object from the given source code.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithSource.html>
 
+=item ($program, \@status) = $ctx->program_with_binary (\@devices, \@binaries)
+
+Creates a new OpenCL::Program object from the given binaries.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clCreateProgramWithBinary.html>
+
+Example: clone an existing program object that contains a successfully
+compiled program, no matter how useless this is.
+
+   my $clone = $ctx->program_with_binary ([$prog->devices], [$prog->binaries]);
+
 =item $packed_value = $ctx->info ($name)
 
 See C<< $platform->info >> for details.
@@ -1205,16 +1250,21 @@ http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadBufferRec
 
 http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRect.html
 
+=item $ev = $queue->copy_buffer_to_image ($src_buffer, $dst_image, $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferToImage.html>
+
 =item $ev = $queue->read_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
 
-L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueCopyBufferRect.html>
-
-=item $ev = $queue->copy_buffer_to_image ($src_buffer, $dst_image, $src_offset, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
+C<$row_pitch> (and C<$slice_pitch>) can be C<0>, in which case the OpenCL
+module uses the image width (and height) to supply default values.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueReadImage.html>
 
 =item $ev = $queue->write_image ($src, $blocking, $x, $y, $z, $width, $height, $depth, $row_pitch, $slice_pitch, $data, $wait_events...)
 
+C<$row_pitch> (and C<$slice_pitch>) can be C<0>, in which case the OpenCL
+module uses the image width (and height) to supply default values.
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueWriteImage.html>
 
 =item $ev = $queue->copy_image ($src_image, $dst_image, $src_x, $src_y, $src_z, $dst_x, $dst_y, $dst_z, $width, $height, $depth, $wait_events...)
@@ -1328,6 +1378,73 @@ Calls C<clGetCommandQueueInfo> with C<CL_QUEUE_REFERENCE_COUNT> and returns the 
 Calls C<clGetCommandQueueInfo> with C<CL_QUEUE_PROPERTIES> and returns the result.
 
 =for gengetinfo end command_queue
+
+=back
+
+=head3 MEMORY MAPPED BUFFERS
+
+OpenCL allows you to map buffers and images to host memory (read: perl
+scalars). This is done much like reading or copying a buffer, by enqueuing
+a map or unmap operation on the command queue.
+
+The map operations return an C<OpenCL::Mapped> object - see L<THE
+OpenCL::Mapped CLASS> section for details on what to do with these
+objects.
+
+The object will be unmapped automatically when the mapped object is
+destroyed (you can use a barrier to make sure the unmap has finished,
+before using the buffer in a kernel), but you can also enqueue an unmap
+operation manually.
+
+=over 4
+
+=item $mapped_buffer = $queue->map_buffer ($buf, $blocking=1, $map_flags=OpenCL::MAP_READ|OpenCL::MAP_WRITE, $offset=0, $size=undef, $wait_events...)
+
+Maps the given buffer into host memory and returns an
+C<OpenCL::MappedBuffer> object. If C<$size> is specified as undef, then
+the map will extend to the end of the buffer.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapBuffer.html>
+
+Example: map the buffer $buf fully and replace the first 4 bytes by "abcd", then unmap.
+
+   {
+     my $mapped = $queue->map_buffer ($buf, 1, OpenCL::MAP_WRITE);
+     substr $$mapped, 0, 4, "abcd";
+   } # asynchronously unmap because $mapped is destroyed
+
+=item $mapped_image = $queue->map_image ($img, $blocking=1, $map_flags=OpenCL::MAP_READ|OpenCL::MAP_WRITE, $x=0, $y=0, $z=0, $width=undef, $height=undef, $depth=undef, $wait_events...)
+
+Maps the given image area into host memory and return an
+C<OpenCL::MappedImage> object.
+
+If any of C<$width>, C<$height> and/or C<$depth> are C<undef> then they
+will be replaced by the maximum possible value.
+
+L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clEnqueueMapImage.html>
+
+Example: map an image (with OpenCL::UNSIGNED_INT8 channel type) and set
+the first channel of the leftmost column to 5, then explicitly unmap
+it. You are not necessarily meant to do it this way, this example just
+shows you the accessors to use :)
+
+   my $mapped = $queue->map_image ($image, 1, OpenCL::MAP_WRITE);
+
+   $mapped->set ($_ * $mapped->row_pitch, pack "C", 5)
+      for 0..$image->height;
+
+   $mapped->unmap;.
+   $mapped->wait; # only needed for out of order queues normally
+
+=item $ev = $queue->unmap ($mapped, $wait_events...)
+
+Unmaps the data from host memory. You must not call any methods that
+modify the data, or modify the data scalar directly, after calling this
+method.
+
+The mapped event object will always be passed as part of the
+$wait_events. The mapped event object will be replaced by the new event
+object that this request creates.
 
 =back
 
@@ -1530,10 +1647,13 @@ finished. Note that many OpenCL implementations block your program while
 compiling whether you use a callback or not. See C<build_async> if you
 want to make sure the build is done in the background.
 
-Note that some OpenCL implementations atc up badly, and don't call the
+Note that some OpenCL implementations act up badly, and don't call the
 callback in some error cases (but call it in others). This implementation
 assumes the callback will always be called, and leaks memory if this is
 not so. So best make sure you don't pass in invalid values.
+
+Some implementations fail with C<OpenCL::INVALID_BINARY> when the
+compilation state is successful but some later stage fails.
 
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clBuildProgram.html>
 
@@ -1877,6 +1997,107 @@ either with OpenCL::COMPLETE or a negative number as status.
 L<http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetUserEventStatus.html>
 
 =back
+
+=head2 THE OpenCL::Mapped CLASS
+
+This class represents objects mapped into host memory. They are
+represented by a blessed string scalar. The string data is the mapped
+memory area, that is, if you read or write it, then the mapped object is
+accessed directly.
+
+You must only ever use operations that modify the string in-place - for
+example, a C<substr> that doesn't change the length, or maybe a regex that
+doesn't change the length. Any other operation might cause the data to be
+copied.
+
+When the object is destroyed it will enqueue an implicit unmap operation
+on the queue that was used to create it.
+
+Keep in mind that you I<need> to unmap (or destroy) mapped objects before
+OpenCL sees the changes, even if some implementations don't need this
+sometimes.
+
+Example, replace the first two floats in the mapped buffer by 1 and 2.
+
+   my $mapped = $queue->map_buffer ($buf, ...
+   $mapped->event->wait; # make sure it's there
+
+   # now replace first 8 bytes by new data, which is exactly 8 bytes long
+   # we blindly assume device endianness to equal host endianness
+   # (and of course, we assume iee 754 single precision floats :)
+   substr $$mapped, 0, 8, pack "f*", 1, 2;
+
+=over 4
+
+=item $ev = $mapped->unmap ($wait_events...)
+
+Unmaps the mapped memory object, using the queue originally used to create
+it, quite similarly to C<< $queue->unmap ($mapped, ...) >>.
+
+=item $bool = $mapped->mapped
+
+Returns whether the object is still mapped - true before an C<unmap> is
+enqueued, false afterwards.
+
+=item $ev = $mapped->event
+
+Return the event object associated with the mapped object. Initially, this
+will be the event object created when mapping the object, and after an
+unmap, this will be the event object that the unmap operation created.
+
+=item $mapped->wait
+
+Same as C<< $mapped->event->wait >> - makes sure no operations on this
+mapped object are outstanding.
+
+=item $bytes = $mapped->size
+
+Returns the size of the mapped area, in bytes. Same as C<length $$mapped>.
+
+=item $ptr = $mapped->ptr
+
+Returns the raw memory address of the mapped area.
+
+=item $mapped->set ($offset, $data)
+
+Replaces the data at the given C<$offset> in the memory area by the new
+C<$data>. This method is safer than direct manipulation of C<$mapped>
+because it does bounds-checking, but also slower.
+
+=item $data = $mapped->get ($offset, $length)
+
+Returns (without copying) a scalar representing the data at the given
+C<$offset> and C<$length> in the mapped memory area. This is the same as
+the following substr, except much slower;
+
+   $data = substr $$mapped, $offset, $length
+
+=cut
+
+sub OpenCL::Mapped::get {
+   substr ${$_[0]}, $_[1], $_[2]
+}
+
+=back
+
+=head2 THE OpenCL::MappedBuffer CLASS
+
+This is a subclass of OpenCL::Mapped, representing mapped buffers.
+
+=head2 THE OpenCL::MappedImage CLASS
+
+This is a subclass of OpenCL::Mapped, representing mapped images.
+
+=over 4
+
+=item $bytes = $mapped->row_pitch
+
+=item $bytes = $mapped->slice_pitch
+
+Return the row or slice pitch of the image that has been mapped.
+
+=back
+
 
 =cut
 
