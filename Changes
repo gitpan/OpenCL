@@ -1,15 +1,28 @@
 Revision history for Perl extension OpenCL.
 
-TODO: http://www.khronos.org/registry/cl/sdk/1.1/docs/man/xhtml/clSetMemObjectDestructorCallback.html
 TODO: some convenience methods maybe?
-TODO: OpenCL::context
-TODO: remove set_image23d
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCompileProgram.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clLinkProgram.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateProgramWithBuiltInKernels.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clCreateSubDevices.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clEnqueueMigrateMemObjects.html
-TODO: http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/clGetKernelArgInfo.html (also generic accessor)
+TODO: async compile/link
+TODO: async $ctx->build_program
+
+1.0  Sat May  5 18:43:54 CEST 2012
+	- OpenCL 1.2 is now effectively feature complete (but hardly tested).
+        - mapping a 1d image with default height now works.
+	- implement these 1.2 functions:
+          $device->sub_devices,
+	  $ctx->program_with_built_in_kernels,
+          $ctx->link_program,
+          $program->compile,
+          $kernel->arg_info (and all 5 accessor methods),
+	  $queue->migrate_mem_objects.
+        - implement OpenCL::context.
+        - implement $memory->destructor_callback.
+        - new methods: $mappedimage->get_row/set_row/width/height/depth/element_size.
+        - remove $kernel->set_image[23]d.
+        - add most enum and bitfield symbols to the manpage, for quick reference.
+        - default all constants to -1, instead of having them missing.
+        - try hard to get d3d definitions, when/if possible.
+        - add numerical limits and floating point constants from cl_platform.h.
+        - unify C types for accessors, for further code size decrease.
 
 0.99 Fri May  4 01:31:15 CEST 2012
 	- OpenCL 1.1 is now effectively feature complete.

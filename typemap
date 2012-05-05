@@ -40,7 +40,12 @@ cl_program_build_info		T_UV
 cl_build_status			T_IV
 cl_kernel_info			T_UV
 cl_kernel_work_group_info	T_UV
+cl_kernel_arg_info		T_UV
+cl_kernel_arg_address_qualifier	T_UV
+cl_kernel_arg_access_qualifier	T_UV
+cl_kernel_arg_type_qualifier	T_UV
 cl_command_type			T_UV
+cl_mem_migration_flags		T_UV
 
 cl_context_properties * context_properties
 
@@ -54,15 +59,14 @@ cl_gl_platform_info	T_UV
 cl_gl_context_info	T_UV
 
 OpenCL::Platform	clobj_ni
-OpenCL::Device		clobj_ni
+OpenCL::Device		clobj
+OpenCL::SubDevice	clobj_ni
 OpenCL::Context		clobj_ni
 OpenCL::Queue		clobj_ni
 OpenCL::Memory		clobj
 OpenCL::Buffer		clobj
 OpenCL::BufferObj	clobj_ni
 OpenCL::Image		clobj
-OpenCL::Image2D		clobj
-OpenCL::Image3D		clobj
 OpenCL::Memory_ornull	clobj_ornull
 OpenCL::Buffer_ornull	clobj_ornull
 OpenCL::Image_ornull	clobj_ornull
@@ -74,25 +78,19 @@ OpenCL::UserEvent	clobj_ni
 
 OpenCL::Mapped		mapped
 
-FUTURE			future
-
 INPUT
 
-future
-	if (SvOK ($arg))
-	  croak (\"$pname argument '$var' is reserved for future extensions, it must be missing or undef in this implementation, in call\");
-
 context_properties
-	$var = SvCONTEXTPROPERTIES (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, 0, 0)
+	$var = SvCONTEXTPROPERTIES (cv, \"$var\", $arg, 0, 0)
 
 clobj
-	$var = ($type)SvCLOBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${ntype}\")
+	$var = ($type)SvCLOBJ (cv, \"$var\", $arg, \"${ntype}\")
 
 clobj_ni
-	$var = ($type)SvCLOBJ_ni (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, stash_${(my $x = $ntype) =~ s/OpenCL:://; \lc $x})
+	$var = ($type)SvCLOBJ_ni (cv, \"$var\", $arg, stash_${(my $x = $ntype) =~ s/OpenCL:://; \lc $x})
 
 clobj_ornull
-	$var = SvOK ($arg) ? ($type)SvCLOBJ (${$ALIAS?\q[GvNAME(CvGV(cv))]:\qq[\"$pname\"]}, \"$var\", $arg, \"${\substr $ntype, 0, -7}\") : 0
+	$var = SvOK ($arg) ? ($type)SvCLOBJ (cv, \"$var\", $arg, \"${\substr $ntype, 0, -7}\") : 0
 
 mapped
 	$var = SvMAPPED ($arg);

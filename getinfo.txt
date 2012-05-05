@@ -125,7 +125,13 @@ cl_event_info, CL_EVENT_CONTEXT, cl::Context
 cl_device_info, CL_DEVICE_PARENT_DEVICE_EXT, cl_device_id
 cl_device_info, CL_DEVICE_PARTITION_TYPES_EXT, VECTOR_CLASS<cl_device_partition_property_ext>
 cl_device_info, CL_DEVICE_AFFINITY_DOMAINS_EXT, VECTOR_CLASS<cl_device_partition_property_ext>
-cl_device_info, CL_DEVICE_REFERENCE_COUNT_EXT, cl_uint
+cl_device_info, CL_DEVICE_REFERENCE_COUNT_EXT , cl_uint
 cl_device_info, CL_DEVICE_PARTITION_STYLE_EXT, VECTOR_CLASS<cl_device_partition_property_ext>
+cl_program_build_info, CL_PROGRAM_BINARY_TYPE, cl_program_binary_type
 cl_gl_texture_info, CL_GL_TEXTURE_TARGET, cl_GLenum
 cl_gl_texture_info, CL_GL_MIPMAP_LEVEL, cl_GLint
+cl_kernel_arg_info, CL_KERNEL_ARG_ADDRESS_QUALIFIER, cl_kernel_arg_address_qualifier
+cl_kernel_arg_info, CL_KERNEL_ARG_ACCESS_QUALIFIER, cl_kernel_arg_access_qualifier
+cl_kernel_arg_info, CL_KERNEL_ARG_TYPE_NAME, STRING_CLASS
+cl_kernel_arg_info, CL_KERNEL_ARG_TYPE_QUALIFIER, cl_kernel_arg_type_qualifier
+cl_kernel_arg_info, CL_KERNEL_ARG_NAME, STRING_CLASS

@@ -20,10 +20,12 @@ my %classmap = qw(
    program_build     Program
    kernel            Kernel
    kernel_work_group Kernel
+   kernel_arg_info   Kernel
    command_queue     Queue
 );
 
 my %typemap = (
+   # getinfo.txt        c type, constructor, pod
    cl_bool         => ['cl_bool', 'value [i] ? &PL_sv_yes : &PL_sv_no', 'boolean'],
    #char            => ['char', 'newSVpvn (value, size)', 'string'],
    char            => ['char', 'newSVpv (value, 0)', 'string'], # all these are 0-terminated strings, and the driver often appends a \0
@@ -37,7 +39,22 @@ my %typemap = (
    Program         => ['cl_program', 'OpenCL::Program', 'program'],
    CommandQueue    => ['cl_command_queue', 'OpenCL::Queue', 'queue'],
    cl_context_properties => ['cl_context_properties', 'newSVuv ((UV)value [i])', 'property_int'],
+   cl_program_binary_type => ['cl_program_binary_type', 'newSVuv ((UV)value [i])', 'binary_type'],
 );
+
+
+# try to re-use types with same representation in C - if we
+# ever overload bitfields etc. then we need to remove all
+# typesimplify code.
+my %typesimplify;
+{
+   open my $h, "<CL/cl.h" or die "CL/cl.h: $!";
+
+   while (<$h>) {
+      $typesimplify{$2} = $1
+         if /typedef\s+(cl_\S+)\s+(cl_\S+);/;
+   }
+}
 
 {
    my %tmap = (
@@ -79,7 +96,7 @@ sub patch($$$$) {
    rename "$file~", $file;
 }
 
-for my $CLASS (qw(platform device context command_queue mem image sampler program program_build kernel kernel_work_group event profiling gl_texture)) {
+for my $CLASS (qw(platform device context command_queue mem image sampler program program_build kernel kernel_work_group kernel_arg event profiling gl_texture)) {
    open my $fh, "<getinfo.txt"
       or die "getinfo.txt: $!";
 
@@ -108,6 +125,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
       my $real_class = $CLASS;
       $real_class = "program" if $real_class eq "program_build";
       $real_class = "kernel"  if $real_class eq "kernel_work_group";
+      $real_class = "kernel"  if $real_class eq "kernel_arg";
       $real_class = "event"   if $real_class eq "profiling";
 
       my $perl_name = lc $name;
@@ -123,6 +141,12 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $extra_args      = ', device';
          $extra_perl_args = ' ($device)';
          $extra_xs_args   = ', OpenCL::Device device';
+      }
+
+      if ($CLASS eq "kernel_arg") {
+         $extra_args      = ', idx';
+         $extra_perl_args = ' ($idx)';
+         $extra_xs_args   = ', cl_uint idx';
       }
 
       my $dynamic;
@@ -156,7 +180,9 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $perltype = "\$$perltype";
       }
 
-      $POD .= "=item $perltype = \$$real_class->$perl_name$extra_perl_args\n\nCalls C<clGet${cbase}Info> with C<$name> and returns the result.\n\n";
+      (my $perlenum = $name) =~ s/^CL_/OpenCL::/ or die;
+
+      $POD .= "=item $perltype = \$$real_class->$perl_name$extra_perl_args\n\nCalls C<clGet${cbase}Info> with C<$perlenum> and returns the result.\n\n";
 
       # XS1 contains the function before ALIAS, XS2 the function afterwards (the body)
       # after we generate the bdoy we look for an identical body generated earlier
@@ -167,13 +193,16 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
            . "XXXNAMEXXX (OpenCL::$classmap{$real_class} self$extra_xs_args)\n";
       $XS2 = " PPCODE:\n";
 
+      my $stype = $type->[0]; # simplified type
+      $stype = $typesimplify{$stype} while exists $typesimplify{$stype};
+
       if ($dynamic) {
         $XS2 .= " size_t size;\n"
               . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix,    0,     0, &size));\n"
-              . " $type->[0] *value = tmpbuf (size);\n"
+              . " $stype *value = tmpbuf (size);\n"
              . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix, size, value,     0));\n";
       } else {
-        $XS2 .= " $type->[0] value [1];\n"
+        $XS2 .= " $stype value [1];\n"
               . " NEED_SUCCESS (Get${cbase}Info, (self$extra_args, ix, sizeof (value), value, 0));\n";
       }
       
@@ -195,10 +224,8 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $stash =~ s/opencl:://;
          $stash =~ s/::/_/g;
 
-         $XS2 .= " {\n";
-         $XS2 .= "   NEED_SUCCESS (Retain$oclass, (value [i]));\n" unless $oclass eq "Platform" || $oclass eq "Device";
-         $XS2 .= "   PUSH_CLOBJ (stash_$stash, value [i]);\n";
-         $XS2 .= " }\n";
+         $XS2 .= " NEED_SUCCESS (Retain$oclass, (value [i]));\n" unless $oclass eq "Platform" || $oclass eq "Device";
+         $XS2 .= " PUSH_CLOBJ (stash_$stash, value [i]);\n";
       } else {
          $XS2 .= " PUSHs (sv_2mortal ($type->[1]));\n";
       }
@@ -223,7 +250,7 @@ for my $CLASS (qw(platform device context command_queue mem image sampler progra
          $_->[2] =~ s/\bix\b/$_->[1][0][1]/g;
          $_->[1] = "";
       } else {
-         $_->[1] = " ALIAS:\n" . join "", map " $_->[0] = $_->[1]\n", @{ $_->[1] };
+         $_->[1] = " ALIAS:\n" . join "", sort, map " $_->[0] = $_->[1]\n", @{ $_->[1] };
       }
       $XS .= join "", @$_;
    }
