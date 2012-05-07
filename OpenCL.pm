@@ -401,7 +401,9 @@ don't normally have to to any error checking.
 All C<CL_xxx> constants that this module supports are always available
 in the C<OpenCL> namespace as C<OpenCL::xxx> (i.e. without the C<CL_>
 prefix). Constants which are not defined in the header files used during
-compilation, or otherwise are not available, will have the value C<-1>.
+compilation, or otherwise are not available, will have the value C<0> (in
+some cases, this will make them indistinguishable from real constants,
+sorry).
 
 The latest version of this module knows and exports the constants
 listed in L<http://cvs.schmorp.de/OpenCL/constiv.h>.
@@ -597,7 +599,7 @@ use Async::Interrupt ();
 our $POLL_FUNC; # set by XS
 
 BEGIN {
-   our $VERSION = '1.0';
+   our $VERSION = '1.01';
 
    require XSLoader;
    XSLoader::load (__PACKAGE__, $VERSION);

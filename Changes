@@ -4,6 +4,10 @@ TODO: some convenience methods maybe?
 TODO: async compile/link
 TODO: async $ctx->build_program
 
+1.01 Mon May  7 03:00:53 CEST 2012
+        - missing symbols are again exported with a 0 default value.
+	- do not try to use cl_d3d9.h - the d3d9 extension has been abondoned by khronos.
+
 1.0  Sat May  5 18:43:54 CEST 2012
 	- OpenCL 1.2 is now effectively feature complete (but hardly tested).
         - mapping a 1d image with default height now works.

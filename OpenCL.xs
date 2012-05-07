@@ -39,8 +39,10 @@
 
 #include CLHDR(opencl.h)
 
+#if 0
 #ifndef CL_VERSION_1_2
   #include CLHDR(cl_d3d9.h)
+#endif
 #endif
 
 #if _WIN32
